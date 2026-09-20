@@ -8,8 +8,11 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 if not DATABASE_URL:
-    # Zero-configuration default: Fast, reliable SQLite in local directory
-    DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diagnostic_lab.db")
+    # On Vercel serverless functions, the root filesystem is read-only; use /tmp
+    if os.getenv("VERCEL"):
+        DB_PATH = "/tmp/diagnostic_lab.db"
+    else:
+        DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diagnostic_lab.db")
     DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 # Connect args for SQLite to handle multi-threaded FastAPI workers safely
