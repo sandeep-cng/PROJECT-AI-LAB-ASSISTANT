@@ -112,16 +112,23 @@ async function checkCallerId(phone) {
 }
 
 // --- Active Call Engine ---
+let currentCallSid = null;
+let useRestFallback = false;
+
+// --- Active Call Engine ---
 function startCallSession(preferredTest = null) {
   const phone = modalPhoneInput.value.trim() || '+1 (555) 234-5678';
   isCallActive = true;
-  modalCallStatus.textContent = 'Call Active • Connected to 24/7 AI Agent';
+  useRestFallback = false;
+  currentCallSid = null;
+  modalCallStatus.textContent = 'Call Active • Connected to Dedicated Care Specialist';
   modalCallStatus.style.color = '#34d399';
   modalTranscriptFeed.innerHTML = '';
   checkCallerId(phone);
 
   // Timer
   callDuration = 0;
+  if (callTimerInterval) clearInterval(callTimerInterval);
   callTimerInterval = setInterval(() => {
     callDuration++;
     const mins = String(Math.floor(callDuration / 60)).padStart(2, '0');
@@ -129,42 +136,81 @@ function startCallSession(preferredTest = null) {
     modalTimer.textContent = `${mins}:${secs}`;
   }, 1000);
 
-  // WebSocket
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  callSocket = new WebSocket(`${protocol}//${window.location.host}/ws/phone-call`);
+  // Attempt WebSocket first; seamlessly fall back to REST on serverless platforms (Vercel)
+  try {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    callSocket = new WebSocket(`${protocol}//${window.location.host}/ws/phone-call`);
 
-  callSocket.onopen = () => {
-    callSocket.send(JSON.stringify({
-      type: 'initiate_call',
-      caller_phone: phone
-    }));
+    callSocket.onopen = () => {
+      callSocket.send(JSON.stringify({
+        type: 'initiate_call',
+        caller_phone: phone
+      }));
 
-    if (preferredTest) {
-      setTimeout(() => {
-        modalUserText.value = `I would like to book the ${preferredTest}`;
-        sendUserSpeechTurn();
-      }, 1800);
-    }
-  };
+      if (preferredTest) {
+        setTimeout(() => {
+          modalUserText.value = `I would like to book the ${preferredTest}`;
+          sendUserSpeechTurn();
+        }, 1800);
+      }
+    };
 
-  callSocket.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === 'call_connected') {
-      appendSpeechBubble('Maya (AI Specialist)', msg.speech, 'agent');
-      speakAudio(msg.speech);
-    } else if (msg.type === 'agent_response') {
-      appendSpeechBubble('Maya (AI Specialist)', msg.speech, 'agent');
-      speakAudio(msg.speech);
+    callSocket.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'call_connected') {
+        currentCallSid = msg.call_sid;
+        appendSpeechBubble('Maya (Care Specialist)', msg.speech, 'agent');
+        speakAudio(msg.speech);
+      } else if (msg.type === 'agent_response') {
+        appendSpeechBubble('Maya (Care Specialist)', msg.speech, 'agent');
+        speakAudio(msg.speech);
 
-      if (msg.actions_taken && msg.actions_taken.length > 0) {
-        modalActionText.textContent = msg.actions_taken[msg.actions_taken.length - 1];
+        if (msg.actions_taken && msg.actions_taken.length > 0) {
+          modalActionText.textContent = msg.actions_taken[msg.actions_taken.length - 1];
+        }
+      }
+    };
+
+    callSocket.onerror = () => {
+      console.log('WebSocket not supported by environment, switching to HTTP REST API');
+      startRestCallSession(phone, preferredTest);
+    };
+
+    callSocket.onclose = () => {
+      if (isCallActive && !useRestFallback) {
+        // If closed prematurely without user hangup, transition to REST
+        useRestFallback = true;
+      }
+    };
+  } catch (err) {
+    startRestCallSession(phone, preferredTest);
+  }
+}
+
+async function startRestCallSession(phone, preferredTest = null) {
+  useRestFallback = true;
+  try {
+    const res = await fetch('/api/telephony/chat-initiate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caller_phone: phone })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      currentCallSid = data.call_sid;
+      appendSpeechBubble('Maya (Care Specialist)', data.speech, 'agent');
+      speakAudio(data.speech);
+
+      if (preferredTest) {
+        setTimeout(() => {
+          modalUserText.value = `I would like to book the ${preferredTest}`;
+          sendUserSpeechTurn();
+        }, 1800);
       }
     }
-  };
-
-  callSocket.onclose = () => {
-    if (isCallActive) endCallSession();
-  };
+  } catch (err) {
+    console.error('REST call failed:', err);
+  }
 }
 
 function endCallSession() {
@@ -179,18 +225,43 @@ function endCallSession() {
   showToast('Call ended. Your appointment & call summary have been saved.');
 }
 
-function sendUserSpeechTurn() {
+async function sendUserSpeechTurn() {
   const text = modalUserText.value.trim();
   if (!text) return;
 
   appendSpeechBubble('You', text, 'user');
   modalUserText.value = '';
 
-  if (callSocket && callSocket.readyState === WebSocket.OPEN) {
+  if (!useRestFallback && callSocket && callSocket.readyState === WebSocket.OPEN) {
     callSocket.send(JSON.stringify({
       type: 'user_speech',
       text: text
     }));
+  } else {
+    // REST turn fallback
+    const phone = modalPhoneInput.value.trim() || '+1 (555) 234-5678';
+    try {
+      const res = await fetch('/api/telephony/chat-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          call_sid: currentCallSid || '',
+          caller_phone: phone,
+          text: text
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        appendSpeechBubble('Maya (Care Specialist)', data.speech, 'agent');
+        speakAudio(data.speech);
+
+        if (data.actions_taken && data.actions_taken.length > 0) {
+          modalActionText.textContent = data.actions_taken[data.actions_taken.length - 1];
+        }
+      }
+    } catch (err) {
+      console.error('Failed to send turn over REST:', err);
+    }
   }
 }
 

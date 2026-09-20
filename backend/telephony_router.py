@@ -102,6 +102,54 @@ async def livekit_token_generator(request: Request):
         "status": "ready"
     }
 
+@telephony_router.post("/chat-initiate")
+async def rest_chat_initiate(request: Request):
+    """
+    HTTP REST endpoint for initiating phone assistant call session.
+    Provides seamless fallback for serverless hosting platforms (like Vercel) where WebSockets are unavailable.
+    """
+    data = await request.json()
+    caller_phone = data.get("caller_phone", "+1 (555) 234-5678")
+    call_sid = f"REST-CALL-{int(time_timestamp())}"
+    agent = DiagnosticVoiceAgent(caller_phone=caller_phone, call_sid=call_sid)
+    active_sessions[call_sid] = agent
+
+    greeting = agent.get_initial_greeting()
+    return {
+        "type": "call_connected",
+        "call_sid": call_sid,
+        "caller_name": greeting["caller_name"],
+        "caller_phone": caller_phone,
+        "is_returning": greeting["is_returning_patient"],
+        "speech": greeting["speech"]
+    }
+
+@telephony_router.post("/chat-turn")
+async def rest_chat_turn(request: Request):
+    """
+    HTTP REST endpoint for processing spoken/text turns with the care coordinator.
+    """
+    data = await request.json()
+    call_sid = data.get("call_sid", "")
+    caller_phone = data.get("caller_phone", "+1 (555) 234-5678")
+    user_text = data.get("text", "").strip()
+
+    agent = active_sessions.get(call_sid)
+    if not agent:
+        agent = DiagnosticVoiceAgent(caller_phone=caller_phone, call_sid=call_sid)
+        active_sessions[call_sid] = agent
+
+    result = agent.process_turn(user_text)
+    return {
+        "type": "agent_response",
+        "speech": result["speech"],
+        "intent": result["intent"],
+        "tool_executed": result.get("tool_executed"),
+        "actions_taken": result.get("actions_taken", []),
+        "citations": result.get("citations", []),
+        "extra": result
+    }
+
 async def handle_phone_call_websocket(websocket: WebSocket):
     """
     Interactive Browser Phone Call Simulator WebSocket.

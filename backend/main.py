@@ -193,5 +193,10 @@ if os.path.exists(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
     @app.get("/")
+    @app.get("/index.html")
     def serve_index():
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
