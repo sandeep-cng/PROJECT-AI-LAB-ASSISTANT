@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 # Add project root to sys.path
@@ -188,14 +188,42 @@ def get_call_logs(db: Session = Depends(get_db)):
     return [cl.to_dict() for cl in logs]
 
 # --- Static Frontend Serving ---
-FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
+if not os.path.exists(FRONTEND_DIR):
+    FRONTEND_DIR = os.path.join(os.getcwd(), "frontend")
+
 if os.path.exists(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
-    @app.get("/")
-    @app.get("/index.html")
-    def serve_index():
-        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+def _read_file_safe(filename: str) -> str:
+    path = os.path.join(FRONTEND_DIR, filename)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
+
+@app.get("/", response_class=HTMLResponse)
+@app.get("/index.html", response_class=HTMLResponse)
+def serve_index():
+    content = _read_file_safe("index.html")
+    if content:
+        return HTMLResponse(content=content)
+    return HTMLResponse("<h1>Apex Family Diagnostic Lab</h1><p>Frontend initializing...</p>")
+
+@app.get("/static/app.css")
+def serve_static_css():
+    content = _read_file_safe("app.css")
+    if content:
+        return Response(content=content, media_type="text/css")
+    return Response(status_code=404)
+
+@app.get("/static/app.js")
+def serve_static_js():
+    content = _read_file_safe("app.js")
+    if content:
+        return Response(content=content, media_type="application/javascript")
+    return Response(status_code=404)
 
 @app.get("/favicon.ico")
 def favicon():
