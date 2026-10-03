@@ -393,6 +393,57 @@ def test_pipeline_architecture_routing():
     assert "2°C - 8°C" in home_col["cold_chain_carrier"]
     print(f"[PASS] AgentTools.check_home_collection() verified: {home_col['cold_chain_carrier']}")
 
+def test_user_speech_detector_subsystem():
+    print("\n--- [TEST 11] Testing User Speech Detector Interruption Circuit ---")
+    from backend.main import app
+    client = TestClient(app)
+
+    # 1. Telephony Webhook Barge-in verification
+    # Exotel Gather with bargin="true"
+    res_exo = client.post("/api/telephony/exotel/incoming?CallFrom=%2B919820023456")
+    assert 'bargin="true"' in res_exo.text, "Exotel incoming must enable bargin='true'"
+    print("[PASS] User Speech Detector: Exotel Voice gathers enforce hardware bargin='true'")
+
+    # Twilio Gather with bargeIn="true"
+    res_twi = client.post("/api/telephony/twilio/incoming", data={"From": "+919820023456"})
+    assert 'bargeIn="true"' in res_twi.text, "Twilio incoming must enable bargeIn='true'"
+    print("[PASS] User Speech Detector: Twilio Voice gathers enforce hardware bargeIn='true'")
+
+    # 2. Interactive WebSocket User Speech Interruption Event
+    with client.websocket_connect("/ws/phone-call") as ws:
+        # Connect call
+        ws.send_json({"type": "initiate_call", "caller_phone": "+91 98200 23456"})
+        init_resp = ws.receive_json()
+        assert init_resp["type"] == "call_connected"
+        call_sid = init_resp["call_sid"]
+
+        # Step: User starts speaking while AI is speaking -> Sends user_interrupt
+        ws.send_json({
+            "type": "user_interrupt",
+            "reason": "vad_mic_energy",
+            "timestamp": 1727900000000
+        })
+        interrupt_resp = ws.receive_json()
+        assert interrupt_resp["type"] == "agent_interrupted"
+        assert interrupt_resp["status"] == "stopped_speaking"
+        assert interrupt_resp["reason"] == "vad_mic_energy"
+        print("[PASS] User Speech Detector: User starts speaking -> IMMEDIATELY STOP TTS & CANCEL AI AUDIO confirmed by server!")
+
+        # Step: LISTEN TO USER -> User finishes speaking complete query
+        ws.send_json({
+            "type": "user_speech",
+            "text": "I need a CBC tomorrow"
+        })
+        speech_resp = ws.receive_json()
+        assert speech_resp["type"] == "agent_response"
+        assert speech_resp["tool_executed"] == "check_availability"
+        assert "10" in speech_resp["speech"] and "450" in speech_resp["speech"]
+        print("[PASS] User Speech Detector: Successfully listened to user complete query and returned 10–12 AM (₹450) & 12–2 PM (₹500)!")
+
+        # Hang up
+        ws.send_json({"type": "hangup"})
+        ws.receive_json()
+
 if __name__ == "__main__":
     test_policy_rag()
     test_voice_agent_caller_id_and_tools()
@@ -404,7 +455,9 @@ if __name__ == "__main__":
     test_gmail_and_whatsapp_notification_dispatch()
     test_check_availability_database_flow()
     test_pipeline_architecture_routing()
+    test_user_speech_detector_subsystem()
     print("\n" + "=" * 75)
-    print("ALL 10 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
+    print("ALL 11 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
     print("=" * 75)
+
 

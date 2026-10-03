@@ -158,6 +158,7 @@ class StreamingTTSEngine {
     this.sentenceQueue = [];
     this.activeUtterance = null;
     this.cachedVoice = null;
+    this.generationId = 0;
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = () => {
@@ -211,7 +212,8 @@ class StreamingTTSEngine {
   }
 
   playNextChunk() {
-    if (this.sentenceQueue.length === 0) {
+    const currentGen = this.generationId;
+    if (this.sentenceQueue.length === 0 || this.generationId !== currentGen) {
       this.isSpeaking = false;
       if (modalAudioState && isCallActive) {
         modalAudioState.textContent = 'Voice Audio Active (Listening to you)';
@@ -235,6 +237,10 @@ class StreamingTTSEngine {
     }
 
     utterance.onstart = () => {
+      if (this.generationId !== currentGen) {
+        window.speechSynthesis.cancel();
+        return;
+      }
       this.isSpeaking = true;
       if (modalAudioState) {
         modalAudioState.textContent = 'Vinod is Speaking • Speak anytime to interrupt';
@@ -244,18 +250,23 @@ class StreamingTTSEngine {
     };
 
     utterance.onend = () => {
-      this.playNextChunk();
+      if (this.generationId === currentGen) {
+        this.playNextChunk();
+      }
     };
 
     utterance.onerror = (e) => {
       this.isSpeaking = false;
-      this.playNextChunk();
+      if (this.generationId === currentGen) {
+        this.playNextChunk();
+      }
     };
 
     window.speechSynthesis.speak(utterance);
   }
 
   cancel() {
+    this.generationId++;
     this.sentenceQueue = [];
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -478,50 +489,143 @@ class STTEngine {
 const sttEngine = new STTEngine();
 
 // ==========================================================================
-// BARGE-IN INTERRUPTION ENGINE
-// Immediately halts agent speech playback the instant human voice or input is detected!
+// USER SPEECH DETECTOR (ZERO-LATENCY BARGE-IN INTERRUPTION ENGINE)
+// Architecture Diagram:
+//          USER SPEECH DETECTOR
+//                   │
+//                   ▼
+//        User starts speaking?
+//                   │
+//                  YES
+//                   │
+//                   ▼
+//        IMMEDIATELY STOP TTS
+//                   │
+//                   ▼
+//         CANCEL AI AUDIO
+//                   │
+//                   ▼
+//          LISTEN TO USER
 // ==========================================================================
-function stopAgentSpeaking(reason = 'user_speaking') {
-  const wasSpeaking = streamingTTS.isSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking);
-  if (!wasSpeaking) return;
-
-  streamingTTS.cancel();
-
-  if (modalAudioState) {
-    modalAudioState.textContent = 'Vinod Paused (Barge-In Active) • Listening to you...';
-    modalAudioState.style.color = '#f59e0b';
-  }
-  if (modalActionText) {
-    modalActionText.textContent = `⚡ Vinod stopped speaking (${reason}) — Listening to your complete query...`;
-    modalActionText.style.color = '#f59e0b';
+class UserSpeechDetector {
+  constructor() {
+    this.isUserSpeaking = false;
+    this.interruptionCount = 0;
+    this.lastInterruptTimestamp = 0;
   }
 
-  // Mark interrupted bubble
-  const agentBubbles = modalTranscriptFeed.querySelectorAll('.speech-bubble.agent');
-  if (agentBubbles.length > 0) {
-    const lastBubble = agentBubbles[agentBubbles.length - 1];
-    if (!lastBubble.querySelector('.bubble-interrupted-tag')) {
-      const tag = document.createElement('span');
-      tag.className = 'bubble-interrupted-tag';
-      tag.textContent = ' [Interrupted by you]';
-      tag.style.color = '#f59e0b';
-      tag.style.fontSize = '0.74rem';
-      tag.style.fontWeight = '600';
-      tag.style.marginLeft = '6px';
-      const speakerEl = lastBubble.querySelector('.bubble-speaker');
-      if (speakerEl) speakerEl.appendChild(tag);
+  // Triggered when: User starts speaking? -> YES
+  onUserStartsSpeaking(source = 'vad_mic_energy') {
+    const isAiSpeaking = streamingTTS.isSpeaking || 
+                         (window.speechSynthesis && window.speechSynthesis.speaking) ||
+                         this.isAnyAudioPlaying();
+
+    this.isUserSpeaking = true;
+    this.interruptionCount++;
+    this.lastInterruptTimestamp = Date.now();
+
+    console.log(`[USER SPEECH DETECTOR] User speech detected (${source}). AI Active: ${isAiSpeaking}`);
+
+    // STEP 1: IMMEDIATELY STOP TTS
+    this.immediatelyStopTTS();
+
+    // STEP 2: CANCEL AI AUDIO
+    this.cancelAiAudio(source);
+
+    // STEP 3: LISTEN TO USER
+    this.listenToUser(source);
+  }
+
+  // 1. IMMEDIATELY STOP TTS
+  immediatelyStopTTS() {
+    streamingTTS.cancel();
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
   }
 
-  if (!useRestFallback && callSocket && callSocket.readyState === WebSocket.OPEN) {
-    callSocket.send(JSON.stringify({
-      type: 'user_interrupt',
-      reason: reason,
-      timestamp: Date.now()
-    }));
+  // 2. CANCEL AI AUDIO
+  cancelAiAudio(source) {
+    // Pause & reset any active HTML5 audio or media playback on the page
+    document.querySelectorAll('audio, video').forEach(media => {
+      try {
+        media.pause();
+        media.currentTime = 0;
+      } catch (e) {}
+    });
+
+    // Notify server via WebSocket to halt server-side generation
+    if (!useRestFallback && callSocket && callSocket.readyState === WebSocket.OPEN) {
+      callSocket.send(JSON.stringify({
+        type: 'user_interrupt',
+        reason: source,
+        timestamp: Date.now()
+      }));
+    }
   }
 
-  console.log(`[Barge-In Active] Agent speech halted: ${reason}`);
+  // 3. LISTEN TO USER
+  listenToUser(source) {
+    // Update live Audio State in UI
+    if (modalAudioState) {
+      modalAudioState.textContent = '⚡ Vinod Paused (Barge-In Active) • Listening to you...';
+      modalAudioState.style.color = '#f59e0b';
+    }
+    if (modalActionText) {
+      modalActionText.textContent = `⚡ AI Audio Cancelled (${source}) — Listening to your complete query...`;
+      modalActionText.style.color = '#f59e0b';
+    }
+
+    // Trigger visualizer state
+    PipelineVisualizer.showUserSpeaking();
+
+    // Animate the 4 steps of the User Speech Detector Circuit
+    const detUser = document.getElementById('det-user-starts');
+    const detStop = document.getElementById('det-stop-tts');
+    const detCancel = document.getElementById('det-cancel-audio');
+    const detListen = document.getElementById('det-listen-user');
+
+    if (detUser && detStop && detCancel && detListen) {
+      detUser.classList.add('flashing');
+      setTimeout(() => detStop.classList.add('flashing'), 80);
+      setTimeout(() => detCancel.classList.add('flashing'), 160);
+      setTimeout(() => detListen.classList.add('flashing'), 240);
+      setTimeout(() => {
+        [detUser, detStop, detCancel, detListen].forEach(el => el && el.classList.remove('flashing'));
+      }, 2000);
+    }
+
+    // Mark interrupted agent bubble in transcript feed
+    const agentBubbles = modalTranscriptFeed.querySelectorAll('.speech-bubble.agent');
+    if (agentBubbles.length > 0) {
+      const lastBubble = agentBubbles[agentBubbles.length - 1];
+      if (!lastBubble.querySelector('.bubble-interrupted-tag')) {
+        const tag = document.createElement('span');
+        tag.className = 'bubble-interrupted-tag';
+        tag.textContent = ' [Interrupted by you]';
+        tag.style.color = '#f59e0b';
+        tag.style.fontSize = '0.74rem';
+        tag.style.fontWeight = '600';
+        tag.style.marginLeft = '6px';
+        const speakerEl = lastBubble.querySelector('.bubble-speaker');
+        if (speakerEl) speakerEl.appendChild(tag);
+      }
+    }
+  }
+
+  isAnyAudioPlaying() {
+    const audioElements = document.querySelectorAll('audio');
+    for (const a of audioElements) {
+      if (!a.paused && a.currentTime > 0) return true;
+    }
+    return false;
+  }
+}
+
+const userSpeechDetector = new UserSpeechDetector();
+
+function stopAgentSpeaking(reason = 'user_speaking') {
+  userSpeechDetector.onUserStartsSpeaking(reason);
 }
 
 // ==========================================================================
