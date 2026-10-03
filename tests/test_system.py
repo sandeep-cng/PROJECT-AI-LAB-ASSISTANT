@@ -33,14 +33,14 @@ def test_policy_rag():
 
 def test_voice_agent_caller_id_and_tools():
     print("\n--- [TEST 2] Testing Human-Like Voice Coordinator (Riya) & Inbound Caller ID ---")
-    # Test returning caller Robert Vance
-    agent = DiagnosticVoiceAgent(caller_phone="+1 (555) 234-5678", call_sid="TEST-CALL-001")
+    # Test returning caller Vinod
+    agent = DiagnosticVoiceAgent(caller_phone="+91 98200 23456", call_sid="TEST-CALL-001")
     greeting = agent.get_initial_greeting()
     print(f"Caller Phone: {agent.caller_phone}")
     print(f"Recognized Patient: {greeting['caller_name']}")
     print(f"Greeting Speech: {greeting['speech'][:140]}...")
-    assert greeting["is_returning_patient"] is True, "Should identify Robert Vance as returning"
-    assert "Robert Vance" in greeting["speech"], "Greeting should mention patient name"
+    assert greeting["is_returning_patient"] is True, "Should identify Vinod as returning"
+    assert "Vinod" in greeting["speech"], "Greeting should mention patient name"
     assert "Riya" in greeting["speech"], "Greeting must introduce coordinator as Riya"
     assert greeting.get("coordinator_name") == "Riya", "Coordinator name must be Riya"
     print("[PASS] Caller ID & Riya Personalized Greeting passed!")
@@ -193,13 +193,13 @@ def test_exotel_telephony_and_barge_in():
     # 1. Test Exotel Inbound Call Webhook
     res_exotel_in = client.post(
         "/api/telephony/exotel/incoming",
-        data={"From": "+1 (555) 234-5678", "CallSid": "EXO-TEST-001"}
+        data={"From": "+91 98200 23456", "CallSid": "EXO-TEST-001"}
     )
     assert res_exotel_in.status_code == 200
     xml_content = res_exotel_in.text
     assert "Response" in xml_content, "Exotel response must be XML"
     assert 'bargin="true"' in xml_content, "Exotel response must enable barge-in so user speech interrupts agent"
-    assert "Robert Vance" in xml_content, "Recognized patient name in Exotel greeting"
+    assert "Vinod" in xml_content, "Recognized patient name in Exotel greeting"
     assert "Riya" in xml_content, "Riya must greet caller in Exotel call"
     print("[PASS] Exotel Inbound Webhook with Caller ID, Riya persona & Barge-In verified!")
 
@@ -215,7 +215,7 @@ def test_exotel_telephony_and_barge_in():
     # 3. Test Twilio Inbound Call Webhook with Barge-In
     res_twilio_in = client.post(
         "/api/telephony/twilio/incoming",
-        data={"From": "+1 (555) 234-5678", "CallSid": "TWILIO-TEST-001"}
+        data={"From": "+91 98200 23456", "CallSid": "TWILIO-TEST-001"}
     )
     assert res_twilio_in.status_code == 200
     assert 'bargeIn="true"' in res_twilio_in.text, "Twilio must enable bargeIn=true to stop agent speaking"
@@ -263,29 +263,29 @@ def test_gmail_and_whatsapp_notification_dispatch():
 
     # 1. Direct Notification Service Test
     res_notif = notification_service.send_appointment_confirmation(
-        patient_name="Robert Vance",
-        patient_phone="+1 (555) 234-5678",
-        patient_email="robert.vance@gmail.com",
+        patient_name="Vinod",
+        patient_phone="+91 98200 23456",
+        patient_email="vinod@gmail.com",
         appointment_id=888,
         appointment_type="home_collection",
         scheduled_date="2026-10-04",
         time_slot="07:30 AM - 08:30 AM",
         tests_requested="Comprehensive Lipid Profile & Fasting Blood Sugar",
-        pickup_address="5580 E. 2nd St, Suite 206",
+        pickup_address="42 Green Glen Layout, Bellandur, Bengaluru",
         fasting_instructions="12 hours of overnight fasting (water is allowed)."
     )
     assert "gmail" in res_notif
     assert "whatsapp" in res_notif
     assert res_notif["gmail"]["status"] in ["sent", "simulated_sent"]
     assert res_notif["whatsapp"]["status"] in ["sent", "simulated_sent"]
-    assert res_notif["gmail"]["recipient"] == "robert.vance@gmail.com"
+    assert res_notif["gmail"]["recipient"] == "vinod@gmail.com"
     print(f"[PASS] Direct dispatch: Gmail ({res_notif['gmail']['status']}) & WhatsApp ({res_notif['whatsapp']['status']}) verified!")
 
     # 2. Test Notification HTTP Endpoint
     res_api = client.post("/api/notifications/test", json={
-        "patient_name": "Eleanor Vance",
-        "phone": "+1 (555) 999-1234",
-        "email": "eleanor.vance@gmail.com"
+        "patient_name": "Pooja Sharma",
+        "phone": "+91 98765 01234",
+        "email": "pooja.sharma@gmail.com"
     })
     assert res_api.status_code == 200
     api_data = res_api.json()

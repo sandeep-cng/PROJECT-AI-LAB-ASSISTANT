@@ -51,6 +51,7 @@ class NotificationService:
         """
         target_email = to_email or "patient@gmail.com"
         type_label = "Doorstep Home Sample Collection" if appointment_type == "home_collection" else "In-Situ Laboratory Clinic Visit"
+        agent_phone = os.getenv("AGENT_PHONE_NUMBER", "+91 80 4388 8802")
 
         subject = f"Appointment Confirmed: {type_label} - Apex MediLab (Ref #{appointment_id})"
 
@@ -102,7 +103,7 @@ class NotificationService:
 
               <p style="font-size: 13px; color: #475569;">
                 Our certified phlebotomist will arrive equipped with a sterile vacuum collection kit and temperature-controlled cold box (2°C - 8°C).
-                If you have any doubts, questions, or wish to reschedule, simply reply to this email or call Riya at <strong>(562) 438-8802</strong>.
+                If you have any doubts, questions, or wish to reschedule, simply reply to this email or call Riya at <strong>{agent_phone}</strong>.
               </p>
             </div>
             <div class="footer">
@@ -123,7 +124,7 @@ class NotificationService:
             f"• Tests: {tests_requested}\n"
             f"• Address: {pickup_address}\n\n"
             f"Pre-Test Instructions: {fasting_instructions}\n\n"
-            f"Support Hotline: (562) 438-8802\n"
+            f"Support Hotline (Riya): {agent_phone}\n"
         )
 
         # Send via Live Gmail SMTP if configured
@@ -184,9 +185,11 @@ class NotificationService:
         """
         clean_phone = to_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         if not clean_phone.startswith("+"):
-            clean_phone = "+1" + clean_phone if len(clean_phone) == 10 else "+" + clean_phone
+            default_cc = os.getenv("DEFAULT_COUNTRY_CODE", "+91")
+            clean_phone = f"{default_cc}{clean_phone}" if len(clean_phone) == 10 else f"+{clean_phone}"
 
         type_label = "Doorstep Home Sample Collection 🏡" if appointment_type == "home_collection" else "In-Situ Laboratory Clinic Visit 🏥"
+        agent_phone = os.getenv("AGENT_PHONE_NUMBER", "+91 80 4388 8802")
 
         whatsapp_message = (
             f"✅ *APEX FAMILY DIAGNOSTIC LAB - BOOKING CONFIRMED*\n\n"
@@ -200,7 +203,7 @@ class NotificationService:
             f"📍 *Location:* {pickup_address}\n\n"
             f"⚠️ *Fasting Guidelines:* {fasting_instructions}\n\n"
             f"🧊 Our phlebotomist will arrive with a sterile vacuum kit and cold chain preservation box.\n\n"
-            f"📞 Questions or doubts? Call Riya anytime at *(562) 438-8802*."
+            f"📞 Questions or doubts? Call Riya anytime at *{agent_phone}*."
         )
 
         # Twilio WhatsApp Dispatch

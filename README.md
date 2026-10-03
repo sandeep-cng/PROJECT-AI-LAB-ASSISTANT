@@ -7,7 +7,7 @@ An enterprise-grade, Multimodal AI Diagnostic Laboratory system built to automat
 ## Key Highlights & Capabilities
 
 ### 1. Inbound Telephone Voice Agent & Caller ID Lookup
-- **Personal Number Recognition**: Automatically extracts caller ID (`+1 555-234-5678` or `+91 98765-43210`), looks up registered patient records, and provides warm, personalized greetings.
+- **Personal Number Recognition**: Automatically extracts caller ID (`+91 98200-23456` for Vinod or `+91 98765-43210` for Ananya), looks up registered patient records, and provides warm, personalized greetings.
 - **Empathetic Turn-Taking**: Handles natural pauses, polite medical communication, and active listening.
 - **Autonomous Task Execution ("Do The Job")**:
   - Checks test pricing and turnaround times.
@@ -145,10 +145,10 @@ EXOTEL_WEBHOOK_SECRET=
 ## Testing Scenarios
 
 1. **Inbound Call Simulation & Barge-In**:
-   - Click the **(562) 438-8802** telephone badge in the top right header to connect to Maya.
+   - Click the **+91 80 4388 8802** telephone badge in the top right header to connect to Riya.
    - Click **"Do I need to fast for Lipid test?"**
-   - While Maya is speaking, start talking into your microphone or click the **✋ Interrupt** button.
-   - Notice Maya stops speaking immediately!
+   - While Riya is speaking, start talking into your microphone or click the **✋ Interrupt** button.
+   - Notice Riya stops speaking immediately!
 2. **Lab Report Query**:
    - Ask: *"Can you check my recent cholesterol results?"*
    - The agent reads out the latest values (Total Chol: 215 mg/dL) and offers to SMS the signed report.

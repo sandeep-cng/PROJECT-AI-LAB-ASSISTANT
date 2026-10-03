@@ -159,7 +159,7 @@ class DiagnosticVoiceAgent:
             if any(sig in user_lower for sig in ambiguity_signals):
                 self.detected_intent = "human_handover_ambiguity"
                 self.actions_taken.append("Clinical / Procedural Ambiguity Detected -> Directed Call to Real Human Assistant Desk")
-                human_desk_phone = os.getenv("HUMAN_ASSISTANT_PHONE_NUMBER", "(562) 438-8802")
+                human_desk_phone = os.getenv("AGENT_PHONE_NUMBER", os.getenv("HUMAN_ASSISTANT_PHONE_NUMBER", "+91 80 4388 8802"))
                 response = (
                     f"{empathy_prefix}Because your health, safety, and comfort are our absolute priority, "
                     f"and that situation involves important medical nuances, I want to make sure you receive completely "
@@ -311,7 +311,7 @@ class DiagnosticVoiceAgent:
                 else:
                     new_patient = Patient(
                         full_name="Valued Patient",
-                        phone_number=self.caller_phone or "+1 (555) 000-1111",
+                        phone_number=self.caller_phone or "+91 98200 23456",
                         email="patient@gmail.com",
                         address="Residential Doorstep (Confirmed on call)",
                         gender="Unknown"

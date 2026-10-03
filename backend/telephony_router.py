@@ -99,7 +99,7 @@ async def exotel_speech_turn(request: Request, call_sid: str = ""):
     # Process spoken turn
     turn_result = agent.process_turn(speech_result)
     reply_speech = turn_result["speech"]
-    human_phone = os.getenv("HUMAN_ASSISTANT_PHONE_NUMBER", os.getenv("DUTY_DOCTOR_PHONE_NUMBER", "+15624388802"))
+    human_phone = os.getenv("AGENT_PHONE_NUMBER", os.getenv("HUMAN_ASSISTANT_PHONE_NUMBER", os.getenv("DUTY_DOCTOR_PHONE_NUMBER", "+918043888802")))
 
     if turn_result.get("intent") in ["emergency_transfer", "human_handover", "human_handover_ambiguity"]:
         xml_reply = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -200,7 +200,7 @@ async def twilio_incoming_call(request: Request):
     Production Twilio Inbound Voice Webhook with immediate Barge-In support.
     """
     form_data = await request.form()
-    caller_phone = form_data.get("From", "+1 (555) 000-0000")
+    caller_phone = form_data.get("From", "+91 98200 23456")
     call_sid = form_data.get("CallSid", f"TWILIO-{int(time_timestamp())}")
 
     agent = DiagnosticVoiceAgent(caller_phone=caller_phone, call_sid=call_sid)
@@ -246,7 +246,7 @@ async def twilio_speech_turn(request: Request, call_sid: str = ""):
 
     turn_result = agent.process_turn(speech_result)
     reply_speech = turn_result["speech"]
-    human_phone = os.getenv("HUMAN_ASSISTANT_PHONE_NUMBER", os.getenv("DUTY_DOCTOR_PHONE_NUMBER", "+15624388802"))
+    human_phone = os.getenv("AGENT_PHONE_NUMBER", os.getenv("HUMAN_ASSISTANT_PHONE_NUMBER", os.getenv("DUTY_DOCTOR_PHONE_NUMBER", "+918043888802")))
 
     if turn_result.get("intent") in ["emergency_transfer", "human_handover", "human_handover_ambiguity"]:
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -275,7 +275,7 @@ async def twilio_speech_turn(request: Request, call_sid: str = ""):
 @telephony_router.post("/livekit/token")
 async def livekit_token_generator(request: Request):
     data = await request.json()
-    caller_phone = data.get("phone", "+1 (555) 234-5678")
+    caller_phone = data.get("phone", "+91 98200 23456")
     room_name = f"medilab-call-{caller_phone.replace('+', '').replace(' ', '')}"
 
     return {
@@ -290,7 +290,7 @@ async def livekit_token_generator(request: Request):
 @telephony_router.post("/chat-initiate")
 async def rest_chat_initiate(request: Request):
     data = await request.json()
-    caller_phone = data.get("caller_phone", "+1 (555) 234-5678")
+    caller_phone = data.get("caller_phone", "+91 98200 23456")
     call_sid = f"REST-CALL-{int(time_timestamp())}"
     agent = DiagnosticVoiceAgent(caller_phone=caller_phone, call_sid=call_sid)
     active_sessions[call_sid] = agent
@@ -310,7 +310,7 @@ async def rest_chat_initiate(request: Request):
 async def rest_chat_turn(request: Request):
     data = await request.json()
     call_sid = data.get("call_sid", "")
-    caller_phone = data.get("caller_phone", "+1 (555) 234-5678")
+    caller_phone = data.get("caller_phone", "+91 98200 23456")
     user_text = data.get("text", "").strip()
 
     agent = active_sessions.get(call_sid)
@@ -350,7 +350,7 @@ async def handle_phone_call_websocket(websocket: WebSocket):
             msg_type = message.get("type")
 
             if msg_type == "initiate_call":
-                caller_phone = message.get("caller_phone", "+1 (555) 234-5678")
+                caller_phone = message.get("caller_phone", "+91 98200 23456")
                 call_sid = f"SIM-CALL-{int(time_timestamp())}"
                 agent = DiagnosticVoiceAgent(caller_phone=caller_phone, call_sid=call_sid)
                 active_sessions[call_sid] = agent

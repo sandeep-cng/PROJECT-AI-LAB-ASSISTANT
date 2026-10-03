@@ -256,7 +256,7 @@ let currentCallSid = null;
 let useRestFallback = false;
 
 function startCallSession(preferredTest = null) {
-  const phone = modalPhoneInput.value.trim() || '+1 (555) 234-5678';
+  const phone = modalPhoneInput.value.trim() || '+91 98200 23456';
   isCallActive = true;
   useRestFallback = false;
   currentCallSid = null;
@@ -315,11 +315,11 @@ function startCallSession(preferredTest = null) {
         speakAudio(msg.speech);
 
         if (msg.intent === 'human_handover_ambiguity') {
-          appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '(562) 438-8802');
+          appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '+91 80 4388 8802');
         } else if (msg.intent === 'emergency_transfer') {
-          appendTransferCard('Emergency Clinical Response Desk', 'Emergency Red-Flag Symptoms', '911 / (562) 438-8802');
+          appendTransferCard('Emergency Clinical Response Desk', 'Emergency Red-Flag Symptoms', '112 / +91 80 4388 8802');
         } else if (msg.intent === 'human_handover' || msg.intent === 'out_of_scope_transfer') {
-          appendTransferCard('Senior Human Clinical Desk', 'Specialist Consultation Required', '(562) 438-8802');
+          appendTransferCard('Senior Human Clinical Desk', 'Specialist Consultation Required', '+91 80 4388 8802');
         } else if (msg.intent === 'book_appointment_success') {
           appendConfirmationBadges(msg.extra || {});
         }
@@ -418,7 +418,7 @@ async function sendUserSpeechTurn() {
     }));
   } else {
     // REST turn fallback
-    const phone = modalPhoneInput.value.trim() || '+1 (555) 234-5678';
+    const phone = modalPhoneInput.value.trim() || '+91 98200 23456';
     try {
       const res = await fetch('/api/telephony/chat-turn', {
         method: 'POST',
@@ -435,7 +435,7 @@ async function sendUserSpeechTurn() {
         speakAudio(data.speech);
 
         if (data.intent === 'human_handover_ambiguity') {
-          appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '(562) 438-8802');
+          appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '+91 80 4388 8802');
         } else if (data.intent === 'book_appointment_success') {
           appendConfirmationBadges(data.extra || {});
         }

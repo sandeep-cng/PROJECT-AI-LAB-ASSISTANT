@@ -242,14 +242,14 @@ def init_and_seed_db():
         if db.query(Patient).count() == 0:
             print("Seeding sample patients for instant caller ID lookup...")
             p1 = Patient(
-                full_name="Robert Vance",
-                phone_number="+1 (555) 234-5678",
-                email="robert.vance@example.com",
-                dob="1972-04-14",
+                full_name="Vinod",
+                phone_number="+91 98200 23456",
+                email="vinod@example.com",
+                dob="1975-06-15",
                 gender="Male",
                 blood_group="O+",
-                address="742 Evergreen Terrace, Springfield",
-                emergency_contact="+1 (555) 345-6789"
+                address="42 Green Glen Layout, Bellandur, Bengaluru",
+                emergency_contact="+91 98200 99999"
             )
             p2 = Patient(
                 full_name="Ananya Sharma",
@@ -274,7 +274,7 @@ def init_and_seed_db():
             db.add_all([p1, p2, p3])
             db.commit()
 
-            # Seed Past Appointment & Lab Report for Robert Vance
+            # Seed Past Appointment & Lab Report for Vinod
             cbc_test = db.query(TestCatalog).filter_by(test_code="CBC").first()
             lipid_test = db.query(TestCatalog).filter_by(test_code="LIPID").first()
             fbs_test = db.query(TestCatalog).filter_by(test_code="FBS").first()
@@ -359,7 +359,14 @@ def init_and_seed_db():
                 phone="+1 (555) 444-5678",
                 license_number="MED-MA-61029"
             )
-            db.add_all([d1, d2])
+        # Ensure any previously seeded Robert Vance records are updated to Vinod (+91 98200 23456)
+        existing_robert = db.query(Patient).filter(Patient.full_name.like("%Robert Vance%")).first()
+        if existing_robert:
+            existing_robert.full_name = "Vinod"
+            existing_robert.phone_number = "+91 98200 23456"
+            existing_robert.email = "vinod@example.com"
+            existing_robert.address = "42 Green Glen Layout, Bellandur, Bengaluru"
+            existing_robert.emergency_contact = "+91 98200 99999"
             db.commit()
 
         print("Database initialized and pre-seeded successfully!")

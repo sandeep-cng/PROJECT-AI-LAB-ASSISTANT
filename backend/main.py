@@ -61,6 +61,7 @@ def health_check():
         "version": "2.0.0",
         "environment_variables": {
             "agent_name": "Riya",
+            "agent_phone_number": os.getenv("AGENT_PHONE_NUMBER", "+918043888802"),
             "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
             "openai_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
             "twilio_configured": bool(os.getenv("TWILIO_ACCOUNT_SID", "").strip()),
@@ -130,7 +131,7 @@ def get_appointments(db: Session = Depends(get_db)):
 def create_appointment(data: dict, db: Session = Depends(get_db)):
     patient_id = data.get("patient_id")
     if not patient_id:
-        phone = data.get("phone", "+1 (555) 000-0000")
+        phone = data.get("phone", "+91 98200 00000")
         name = data.get("full_name", "Walk-In Patient")
         p = Patient(full_name=name, phone_number=phone, address=data.get("address"))
         db.add(p)
@@ -154,7 +155,7 @@ def create_appointment(data: dict, db: Session = Depends(get_db)):
     patient = db.query(Patient).filter_by(id=patient_id).first()
     notif_res = notification_service.send_appointment_confirmation(
         patient_name=patient.full_name if patient else "Valued Patient",
-        patient_phone=patient.phone_number if patient else "+1 (555) 000-0000",
+        patient_phone=patient.phone_number if patient else "+91 98200 00000",
         patient_email=patient.email if (patient and patient.email) else "patient@gmail.com",
         appointment_id=appt.id,
         appointment_type=appt.appointment_type,
@@ -171,7 +172,7 @@ def create_appointment(data: dict, db: Session = Depends(get_db)):
 def test_notifications_endpoint(data: dict):
     from backend.notifications import notification_service
     patient_name = data.get("patient_name", "Valued Patient")
-    phone = data.get("phone", "+1 (555) 234-5678")
+    phone = data.get("phone", "+91 98200 23456")
     email = data.get("email", "patient@gmail.com")
     return notification_service.send_appointment_confirmation(
         patient_name=patient_name,
