@@ -510,13 +510,31 @@ class ConversationEngine:
                     "tool": "book_appointment",
                     "intent": "confirm_slot_selection"
                 }
+            if any(term in user_lower for term in ["home collection", "home", "doorstep", "at home", "visit lab", "visiting the lab", "visit the lab", "clinic", "in person", "lab visit"]):
+                return {
+                    "category": "Action required",
+                    "route": "AGENT_TOOLS",
+                    "component": "Booking",
+                    "tool": "select_sampling_mode",
+                    "intent": "select_sampling_mode"
+                }
 
-        # 5. Action Required: Check Availability ("I need a CBC tomorrow", "User wants CBC tomorrow")
+        # 5. Question: RAG (Prep / Policy) - e.g. "Do I need to fast before CBC test?"
+        if any(k in user_lower for k in ["fasting", "fast", "water", "food", "eat", "drink", "prepare", "preparation", "cancel", "refund", "late", "insurance", "privacy", "hipaa", "panic", "critical", "cold chain"]):
+            return {
+                "category": "Question",
+                "route": "RAG",
+                "component": "Prep" if any(w in user_lower for w in ["fasting", "fast", "water", "food", "eat", "drink", "prepare", "preparation"]) else "Policy",
+                "tool": "rag_engine",
+                "intent": "check_policy"
+            }
+
+        # 6. Action Required: Check Availability ("I need a CBC", "I need a CBC tomorrow", "User wants CBC tomorrow")
         is_cbc_query = "cbc" in user_lower or "complete blood count" in user_lower
         is_avail = any(q in user_lower for q in [
             "wants cbc", "want cbc", "need cbc", "available", "availability", "check availability",
             "slots", "which slot", "what time", "timings"
-        ]) or (is_cbc_query and ("tomorrow" in user_lower or "today" in user_lower))
+        ]) or (is_cbc_query and any(w in user_lower for w in ["tomorrow", "today", "slot", "book", "need", "want", "test", "appointment", "schedule", "get", "like", "order"]))
 
         has_explicit_time = any(t in user_lower for t in ["7:30", "07:30", "6:30", "06:30", "4:00", "04:00", "7 am", "8 am", "6 am"])
 
@@ -529,7 +547,7 @@ class ConversationEngine:
                 "intent": "check_availability"
             }
 
-        # 6. Action Required: Booking Appointment (Doorstep or In-situ)
+        # 7. Action Required: Booking Appointment (Doorstep or In-situ)
         if any(k in user_lower for k in ["book", "schedule", "appointment", "doorstep", "home collection", "in-situ", "insitu", "in person", "visit lab", "come to lab", "clinic visit", "sample draw"]):
             return {
                 "category": "Action required",
@@ -539,7 +557,7 @@ class ConversationEngine:
                 "intent": "book_appointment"
             }
 
-        # 7. Action Required: Price / Catalog Query
+        # 8. Action Required: Price / Catalog Query
         if any(k in user_lower for k in ["price", "cost", "how much", "charges", "rate", "package fee", "discount"]):
             return {
                 "category": "Action required",
@@ -549,7 +567,7 @@ class ConversationEngine:
                 "intent": "search_catalog"
             }
 
-        # 8. Action Required: Reports Lookup
+        # 9. Action Required: Reports Lookup
         if any(k in user_lower for k in ["report", "result", "cholesterol", "sugar level", "findings", "test status"]) and (
             "check" in user_lower or "what is" in user_lower or "how is" in user_lower or "ready" in user_lower or "my" in user_lower
         ):
@@ -559,16 +577,6 @@ class ConversationEngine:
                 "component": "Lab",
                 "tool": "get_patient_reports",
                 "intent": "query_report"
-            }
-
-        # 9. Question: RAG (Prep / Policy / FAQ / Test)
-        if any(k in user_lower for k in ["fasting", "fast", "water", "food", "eat", "drink", "prepare", "preparation", "cancel", "refund", "late", "insurance", "privacy", "hipaa", "panic", "critical", "cold chain"]):
-            return {
-                "category": "Question",
-                "route": "RAG",
-                "component": "Prep" if any(w in user_lower for w in ["fasting", "water", "food", "eat", "drink", "prepare"]) else "Policy",
-                "tool": "rag_engine",
-                "intent": "check_policy"
             }
 
         # 10. Question: General Test or FAQ Questions
@@ -661,21 +669,20 @@ class DiagnosticVoiceAgent:
             if self.context_mgr.recent_report:
                 greeting = (
                     f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
-                    f"Hello {self.patient.full_name}, it's wonderful to speak with you again. I see your recent diagnostic reports on file. "
-                    f"Are you calling to review your results, or would you like to schedule a home sample collection or clinic test today?"
+                    f"Hi {self.patient.full_name}, good to speak with you again. "
+                    f"Are you calling about your recent reports, or looking to book a test?"
                 )
             else:
                 greeting = (
                     f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
-                    f"Hello {self.patient.full_name}, it's wonderful to speak with you again. "
-                    f"How can I assist you today? I can help you schedule a doorstep home collection or book an in-clinic lab appointment."
+                    f"Hi {self.patient.full_name}, good to speak with you again. "
+                    f"How can I help you today? Looking to book a test or need test info?"
                 )
             caller_name = self.patient.full_name
         else:
             greeting = (
                 f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
-                f"How may I assist you today? I can help you schedule a doorstep home sample collection, "
-                f"book an in-clinic lab appointment, or explain pre-test fasting instructions."
+                f"How can I help you today? Looking to book a test or need test info?"
             )
             caller_name = "New Caller"
 
@@ -693,11 +700,11 @@ class DiagnosticVoiceAgent:
     def _detect_human_empathy_prefix(self, user_lower: str) -> str:
         """Evaluates emotional cues to deliver compassionate care."""
         if any(w in user_lower for w in ["scared", "worried", "nervous", "anxious", "terrified", "panic", "stress", "crying", "please help me", "pain is bad", "feeling bad"]):
-            return "I hear how anxious you are feeling, and I want to assure you that you are in caring and safe hands with our clinical team. "
+            return "I know you're feeling anxious, but you're in safe hands with us. "
         if any(w in user_lower for w in ["bad service", "frustrated", "irritated", "why so slow", "taking forever", "terrible", "unacceptable", "complaint"]):
-            return "I completely understand your frustration and apologize for any inconvenience. Your peace of mind and health are my top priority. "
+            return "I completely understand and apologize for the trouble. "
         if any(w in user_lower for w in ["elderly", "old person", "hard of hearing", "speak slowly", "don't understand computers"]):
-            return "Take all the time you need, I am right here with you. "
+            return "Take your time, I'm right here. "
         return ""
 
     def process_turn(self, user_transcript: str) -> Dict[str, Any]:
@@ -744,9 +751,8 @@ class DiagnosticVoiceAgent:
                 self.detected_intent = "emergency_escalation"
                 self.actions_taken.append("Emergency Red-Flag Symptoms -> Transferred to Duty Medical Officer & Emergency Protocol")
                 response = (
-                    "I hear that you are experiencing urgent symptoms. Please hold the line — let me connect you "
-                    "immediately to our Senior Duty Medical Officer and our clinical emergency team. "
-                    "If you are in immediate distress, please also dial 911 or 112 right away. Connecting you now..."
+                    "This sounds urgent. Please dial 911 right away. "
+                    "I'm connecting you to our Senior Duty Medical Officer immediately. Stay on the line..."
                 )
                 pipeline_trace["state"] = self.engine.state.value
                 return self._finalize_turn(
@@ -767,18 +773,13 @@ class DiagnosticVoiceAgent:
                 if intent == "human_handover_ambiguity":
                     self.actions_taken.append("Clinical / Procedural Ambiguity Detected -> Directed Call to Real Human Assistant Desk")
                     response = (
-                        f"{empathy_prefix}Because your health, safety, and comfort are our absolute priority, "
-                        f"and that situation involves important medical nuances, I want to make sure you receive completely "
-                        f"unambiguous, verified clinical guidance. "
-                        f"Please hold the line for just a moment — I am directly transferring your call to our Senior Duty Medical Officer "
-                        f"and Human Clinical Care Desk at {human_desk_phone} right now so you can speak directly with a doctor. "
-                        f"Connecting you now..."
+                        f"{empathy_prefix}To give you completely unambiguous guidance on those medical nuances, "
+                        f"let me transfer you to our Senior Duty Medical Officer at {human_desk_phone}. Connecting you now..."
                     )
                 else:
                     self.actions_taken.append("Human Specialist Request -> Transferred to Senior Human Clinical Desk")
                     response = (
-                        f"{empathy_prefix}Let me connect you right now to our Senior Duty Medical Officer / Clinical Supervisor "
-                        f"who can assist you directly with that request at {human_desk_phone}. Please hold on for just a moment while I transfer your call..."
+                        f"{empathy_prefix}Sure, let me connect you with our Senior Duty Medical Officer at {human_desk_phone}. One moment..."
                     )
 
                 pipeline_trace["state"] = self.engine.state.value
@@ -815,8 +816,16 @@ class DiagnosticVoiceAgent:
 
                     if chosen_slot:
                         test_name = avail_data.get("test_name", "Complete Blood Count (CBC)")
+                        test_code = avail_data.get("test_code", "CBC")
                         target_date = avail_data.get("target_date", (datetime.date.today() + datetime.timedelta(days=1)).isoformat())
-                        appt_type = avail_data.get("appointment_type", "home_collection")
+
+                        if any(w in user_lower for w in ["visit", "visiting", "lab", "clinic", "in-situ", "insitu"]):
+                            appt_type = "insitu_lab_visit"
+                        elif any(w in user_lower for w in ["home", "doorstep", "collect"]):
+                            appt_type = "home_collection"
+                        else:
+                            appt_type = avail_data.get("appointment_type", "home_collection")
+
                         price_str = chosen_slot["price_formatted"]
                         slot_label = chosen_slot["time_slot"]
 
@@ -843,11 +852,10 @@ class DiagnosticVoiceAgent:
                         self.engine.state = ConversationState.APPOINTMENT_BOOKED
                         pipeline_trace["state"] = self.engine.state.value
 
+                        test_short = "CBC" if test_code == "CBC" else test_name
                         response = (
-                            f"{empathy_prefix}Perfect! I have scheduled your {test_name} for tomorrow from {slot_label} at {price_str}. "
-                            f"Our phlebotomist will arrive equipped with a sterile collection kit and cold-chain carrier. "
-                            f"I have also sent your confirmed booking details to your WhatsApp ({booking_res['patient_phone']}) and your Gmail inbox ({booking_res['patient_email']})! "
-                            f"Is there anything else I can assist you with today?"
+                            f"{empathy_prefix}Done! Booked your {test_short} for tomorrow, {slot_label} at {price_str}. "
+                            f"I've sent the confirmation to your WhatsApp and Gmail. Anything else I can help with?"
                         )
                         return self._finalize_turn(
                             response,
@@ -865,7 +873,32 @@ class DiagnosticVoiceAgent:
                             }
                         )
 
-                # B. Availability Check ("User wants CBC tomorrow" / "I need a CBC tomorrow")
+                # Sampling Mode Selection when availability is pending
+                if component == "Booking" and intent == "select_sampling_mode" and self.engine.memory.pending_availability:
+                    avail_data = self.engine.memory.pending_availability
+                    if any(w in user_lower for w in ["visit", "visiting", "lab", "clinic", "in-situ", "insitu"]):
+                        avail_data["appointment_type"] = "insitu_lab_visit"
+                        mode_text = "visiting the lab"
+                    else:
+                        avail_data["appointment_type"] = "home_collection"
+                        mode_text = "home collection"
+                    self.pending_availability = avail_data
+                    self.engine.memory.set_pending_availability(avail_data)
+                    self.detected_intent = "slot_selection_pending"
+                    self.engine.state = ConversationState.SLOT_SELECTION_PENDING
+                    pipeline_trace["state"] = self.engine.state.value
+
+                    response = (
+                        f"{empathy_prefix}Got it, {mode_text}. We have 10 to 12 AM for ₹450, or 12 to 2 PM for ₹500. "
+                        f"Which time works for you?"
+                    )
+                    return self._finalize_turn(
+                        response,
+                        intent="slot_selection_pending",
+                        extra={"pipeline_trace": pipeline_trace}
+                    )
+
+                # B. Availability Check ("User wants CBC tomorrow" / "I need a CBC tomorrow" / "I need a CBC")
                 if component == "Availability":
                     test_code_to_check = "CBC" if ("cbc" in user_lower or "complete blood count" in user_lower) else ("LIPID" if "lipid" in user_lower else "CBC")
                     avail_data = AgentTools.check_availability(test_query=test_code_to_check, target_date="tomorrow", db=db)
@@ -881,10 +914,11 @@ class DiagnosticVoiceAgent:
                         f"Executed check_availability('{test_code_to_check}', 'tomorrow') -> Database returned: {slot1['slot_label']} ({slot1['price_formatted']}), {slot2['slot_label']} ({slot2['price_formatted']})"
                     )
 
+                    test_label = "CBC" if test_code_to_check == "CBC" else avail_data["test_name"]
                     response = (
-                        f"{empathy_prefix}For your {avail_data['test_name']} tomorrow, we have two slots available: "
-                        f"{slot1['slot_label']} for {slot1['price_formatted']}, or {slot2['slot_label']} for {slot2['price_formatted']}. "
-                        f"Which one works best for you?"
+                        f"{empathy_prefix}Sure. {test_label}, right? "
+                        f"For tomorrow, we have two slots: 10 to 12 AM for ₹450, or 12 to 2 PM for ₹500. "
+                        f"Are you looking for home collection or would you prefer visiting the lab?"
                     )
                     return self._finalize_turn(
                         response,
@@ -941,19 +975,15 @@ class DiagnosticVoiceAgent:
 
                     if appt_type == "home_collection":
                         response = (
-                            f"{empathy_prefix}Wonderful! I have scheduled your Doorstep Home Sample Collection for tomorrow, {tomorrow}, "
-                            f"during the slot {time_slot} for {test_names}. "
-                            f"Our phlebotomist will arrive equipped with a sterile collection kit and temperature-controlled cold box. "
-                            f"I have also instantly dispatched your booking confirmation and pre-test fasting instructions to your WhatsApp ({booking_res['patient_phone']}) "
-                            f"and your Gmail inbox ({booking_res['patient_email']})! Is there anything else I can assist you with today?"
+                            f"{empathy_prefix}Done! Booked your Doorstep Home Sample Collection for tomorrow, {time_slot}. "
+                            f"I've sent the confirmation to your WhatsApp ({booking_res['patient_phone']}) and Gmail ({booking_res['patient_email']}). "
+                            f"Anything else I can help with?"
                         )
                     else:
                         response = (
-                            f"{empathy_prefix}Perfect! I have reserved your In-Situ Laboratory Clinic Appointment for tomorrow, {tomorrow}, "
-                            f"at {time_slot} for {test_names} at our facility on 5580 E. 2nd St. "
-                            f"Your slot is priority fast-tracked with zero waiting time. "
-                            f"I have also sent your complete booking confirmation and clinic directions to your WhatsApp ({booking_res['patient_phone']}) "
-                            f"and your Gmail inbox ({booking_res['patient_email']})! How else may I assist you today?"
+                            f"{empathy_prefix}Done! Reserved your In-Situ Laboratory Clinic Appointment for tomorrow, {time_slot} at 5580 E. 2nd St. "
+                            f"I've sent the confirmation to your WhatsApp ({booking_res['patient_phone']}) and Gmail ({booking_res['patient_email']}). "
+                            f"Anything else I can help with?"
                         )
 
                     return self._finalize_turn(
@@ -979,18 +1009,15 @@ class DiagnosticVoiceAgent:
 
                     if pricing_data["type"] == "package":
                         response = (
-                            f"{empathy_prefix}Our featured checkup is the '{pricing_data['name']}'. "
-                            f"It covers {pricing_data['test_count']} essential parameters. "
-                            f"The special package fee is {pricing_data['price_formatted']} (normally ₹{int(pricing_data['original_price'])}). "
-                            f"We can conduct this either as a doorstep home collection or as an in-situ clinic visit. Which would you prefer?"
+                            f"{empathy_prefix}The {pricing_data['name']} is {pricing_data['price_formatted']} (normally ₹{int(pricing_data['original_price'])}) and covers {pricing_data['test_count']} parameters. "
+                            f"Are you looking for home collection or would you prefer visiting the lab?"
                         )
                         tool_executed = "search_packages"
                     else:
-                        fasting_text = f"It requires {pricing_data['fasting_hours']} hours of fasting." if pricing_data["fasting_required"] else "No fasting is required."
+                        fasting_text = f"It requires {pricing_data['fasting_hours']} hours fasting." if pricing_data["fasting_required"] else "No fasting required."
                         response = (
-                            f"{empathy_prefix}The {pricing_data['name']} ({pricing_data['code']}) is {pricing_data['price_formatted']}. "
-                            f"Results are ready within {pricing_data['turnaround_hours']} hours. {fasting_text} "
-                            f"Would you prefer our complimentary doorstep home collection, or would you like to visit our in-situ laboratory clinic?"
+                            f"{empathy_prefix}{pricing_data['name']} is {pricing_data['price_formatted']}. {fasting_text} "
+                            f"Are you looking for home collection or would you prefer visiting the lab?"
                         )
                         tool_executed = "search_test_catalog"
 
@@ -1006,33 +1033,32 @@ class DiagnosticVoiceAgent:
                     self.detected_intent = "query_report"
                     if not self.patient:
                         response = (
-                            f"{empathy_prefix}I would be glad to look up your laboratory findings. Since you are calling from a new number, "
-                            "could you please share your full name and registered 10-digit telephone number so I can access your records securely?"
+                            f"{empathy_prefix}I can check your reports. Since this is a new number, "
+                            "could you share your full name and registered phone number?"
                         )
                         return self._finalize_turn(response, intent="query_report_auth_needed", extra={"pipeline_trace": pipeline_trace})
 
                     reports = db.query(LabReport).filter_by(patient_id=self.patient.id).order_by(LabReport.id.desc()).limit(3).all()
                     if not reports:
                         response = (
-                            f"{empathy_prefix}Mr./Ms. {self.patient.full_name}, I checked our laboratory records, but there are no completed reports on file right now. "
-                            "If you gave a sample earlier today, our standard turnaround is 6 to 8 hours. "
-                            "Let me connect you directly to our Pathology Accessioning Desk if you need an expedited status check."
+                            f"{empathy_prefix}I checked our records, but there are no completed reports yet for {self.patient.full_name}. "
+                            "Standard turnaround is 6 to 8 hours. Let me know if you'd like me to connect you to our desk."
                         )
                         return self._finalize_turn(response, intent="query_report_empty", extra={"pipeline_trace": pipeline_trace})
 
                     report_summaries = []
                     for r in reports:
-                        flag_note = f" (Flagged as {r.flag.upper()})" if r.flag != "normal" else " (Optimal / Normal)"
+                        flag_note = f" ({r.flag.upper()})" if r.flag != "normal" else " (Normal)"
                         summary_line = f"{r.test.test_name}: Result is {r.result_value}{flag_note}."
                         if r.ai_summary:
-                            summary_line += f" Clinical note: {r.ai_summary}"
+                            summary_line += f" Note: {r.ai_summary}"
                         report_summaries.append(summary_line)
 
                     self.actions_taken.append(f"Retrieved {len(reports)} lab reports for {self.patient.full_name}")
                     response = (
-                        f"{empathy_prefix}Here are your latest laboratory results, {self.patient.full_name}:\n"
+                        f"{empathy_prefix}Here are your latest results, {self.patient.full_name}: "
                         + " ".join(report_summaries)
-                        + "\nWould you like me to send the official signed PDF report to your WhatsApp and Gmail, or would you like to schedule any follow-up tests?"
+                        + " Would you like me to send the official report to your WhatsApp and Gmail?"
                     )
                     return self._finalize_turn(
                         response,
@@ -1059,9 +1085,8 @@ class DiagnosticVoiceAgent:
                     self.detected_intent = "human_handover_ambiguity"
                     self.actions_taken.append(f"RAG {rag_component} Ambiguity (< threshold) -> Escalated to Human Care Desk")
                     response = (
-                        f"{empathy_prefix}Our Standard Operating Procedures have specific protocols for that, but to ensure "
-                        "zero ambiguity for your exact situation, let me directly connect you to our Senior Duty Medical Officer. "
-                        "Please hold the line for a moment while I transfer you..."
+                        f"{empathy_prefix}To give you clear, verified guidance on that, "
+                        "let me directly connect you to our Senior Duty Medical Officer. One moment..."
                     )
                     return self._finalize_turn(
                         response,
@@ -1071,16 +1096,19 @@ class DiagnosticVoiceAgent:
                     )
 
                 answer_body = rag_result["answer"]
-                spoken_answer = re.sub(r'#+\s*', '', answer_body)
-                spoken_answer = re.sub(r'\*\*', '', spoken_answer)
+                spoken_clean = re.sub(r'According to Apex MediLab Policy \([^)]+\):\s*', '', answer_body).strip()
+                spoken_clean = re.sub(r'#+\s*', '', spoken_clean)
+                spoken_clean = re.sub(r'\*\*', '', spoken_clean)
+                lines = [l.strip() for l in spoken_clean.split("\n") if l.strip() and not l.strip().startswith("- Policy Reference:")]
+                spoken_natural = " ".join(lines)
 
                 top_clause = citations[0]["section"] if citations else "Standard Operating Procedures"
                 self.actions_taken.append(f"Queried RAG ({rag_component}): '{user_transcript}' -> Cited {top_clause}")
                 self.detected_intent = "check_policy"
 
                 response = (
-                    f"{empathy_prefix}Here is our official laboratory guidance on that:\n{spoken_answer}\n"
-                    "Would you like to book a doorstep sample collection at your home, or would you prefer an in-situ clinic appointment at our laboratory?"
+                    f"{empathy_prefix}{spoken_natural} "
+                    f"Are you looking for home collection or would you prefer visiting the lab?"
                 )
                 return self._finalize_turn(
                     response,
@@ -1094,29 +1122,26 @@ class DiagnosticVoiceAgent:
             # ------------------------------------------------------------------
             if intent == "bot_identity":
                 response = (
-                    f"{empathy_prefix}I am {self.agent_name}, your dedicated Indian virtual lab assistant at Apex Family Diagnostic Lab. "
-                    "I am here to understand your healthcare needs, guide you with test preparation, and arrange hassle-free sample collections."
+                    f"{empathy_prefix}I'm {self.agent_name} from Apex Family Diagnostic Lab. How can I help you today?"
                 )
                 return self._finalize_turn(response, intent="bot_identity", extra={"pipeline_trace": pipeline_trace})
 
             if intent == "bot_acknowledgement":
                 response = (
-                    f"{empathy_prefix}Yes, I can hear you clearly! I am right here with you. How can I help you today with your lab tests, fasting rules, or appointments?"
+                    f"{empathy_prefix}Yes, I can hear you clearly! How can I help you today?"
                 )
                 return self._finalize_turn(response, intent="bot_acknowledgement", extra={"pipeline_trace": pipeline_trace})
 
             if intent == "bot_gratitude":
                 response = (
-                    f"{empathy_prefix}You are very welcome! It is truly my pleasure to support your health. Please let me know if you need anything else, or if you're ready to schedule your sample collection."
+                    f"{empathy_prefix}You're welcome! Let me know if you need anything else."
                 )
                 return self._finalize_turn(response, intent="bot_gratitude", extra={"pipeline_trace": pipeline_trace})
 
             # Default General Assistance
             self.detected_intent = "conversational_support"
             response = (
-                f"{empathy_prefix}I am here to take care of all your diagnostic requirements. "
-                "I can schedule a doorstep sample draw at your home, book an in-situ laboratory clinic visit, "
-                "or explain fasting and preparation rules. Which would you prefer today?"
+                f"{empathy_prefix}How can I help you today? Looking to book a test or need test info?"
             )
             return self._finalize_turn(response, intent="general_assistance", extra={"pipeline_trace": pipeline_trace})
 
