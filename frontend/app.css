@@ -1250,6 +1250,88 @@ body {
 .speech-bubble.agent .bubble-speaker { color: var(--primary-dark); }
 .speech-bubble.user .bubble-speaker { color: #94a3b8; }
 
+/* Direct Clinical Handover Card */
+.speech-transfer-card {
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 10px 0;
+  animation: slideIn 0.25s ease;
+}
+
+.transfer-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #b45309;
+  font-weight: 800;
+  margin-bottom: 6px;
+  letter-spacing: 0.4px;
+}
+
+.transfer-card-body p {
+  font-size: 0.8rem;
+  color: #78350f;
+  margin: 3px 0;
+}
+
+.transfer-pulse-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: #b45309;
+  font-weight: 600;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #fde68a;
+}
+
+.transfer-dot {
+  width: 8px;
+  height: 8px;
+  background: #f59e0b;
+  border-radius: 50%;
+  animation: pulse-transfer 1.2s infinite;
+}
+
+@keyframes pulse-transfer {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.6; }
+}
+
+/* WhatsApp & Gmail Confirmation Badges */
+.speech-confirmation-badges {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 10px 0;
+  flex-wrap: wrap;
+}
+
+.badge-notif-whatsapp {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 10px;
+}
+
+.badge-notif-gmail {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 10px;
+}
+
 /* Modal Action Bar */
 .modal-action-bar {
   background: #f8fafc;
@@ -1317,8 +1399,70 @@ body {
   color: var(--text-main);
 }
 
-.input-speech-row input:focus {
-  border-color: var(--primary);
+.waveform-left-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.barge-in-badge {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #059669;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.3px;
+  animation: pulse-badge 2.5s infinite ease-in-out;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
+}
+
+.barge-in-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.72rem;
+  color: #166534;
+}
+
+.btn-interrupt {
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+  color: #b45309;
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+
+.btn-interrupt:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+  transform: translateY(-1px);
+}
+
+.btn-interrupt:active {
+  transform: translateY(0);
 }
 
 .btn-primary {

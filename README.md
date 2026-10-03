@@ -72,21 +72,91 @@ python run.py
 
 ---
 
+### 6. Instant Barge-In (Interruption Engine)
+- **Natural Human Conversations**: Whenever the user begins speaking into the microphone, types in the input box, or clicks an action button, the agent **immediately halts speech playback** (`window.speechSynthesis.cancel()` / WebSockets interrupt / `bargin="true"`).
+- **Multi-Layer Detection**:
+  - **Hardware VAD**: Web Audio API volume energy analysis triggers interruption in < 40ms.
+  - **SpeechRecognition Events**: `onspeechstart` and `onsoundstart` cut off agent voice instantly.
+  - **Telephony Carrier Barge-In**: Twilio (`bargeIn="true"`) and Exotel (`bargin="true"`) markups ensure live phone callers can interrupt the AI at any word.
+  - **Manual Interruption**: One-click `✋ Interrupt` button in the UI.
+
+---
+
+## Environment Variables Configuration
+
+The `.env` file provides full configuration keys for all supported services:
+
+### 1. PostgreSQL
+```ini
+# Complete URL or individual parameters
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/diagnostic_lab
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=diagnostic_lab
+POSTGRES_SSLMODE=prefer
+```
+*(If left blank or if PostgreSQL is unreachable, the system automatically runs on local SQLite without crashing).*
+
+### 2. Vector Databases (Hybrid RAG)
+```ini
+VECTOR_DB_TYPE=memory        # 'memory', 'pgvector', 'chroma', 'pinecone', 'qdrant'
+EMBEDDING_PROVIDER=gemini    # 'gemini', 'openai', 'local_bm25'
+EMBEDDING_MODEL=text-embedding-004
+VECTOR_SEARCH_TOP_K=3
+
+# pgvector
+PGVECTOR_ENABLED=false
+PGVECTOR_TABLE=diagnostic_policy_vectors
+
+# ChromaDB
+CHROMA_PERSIST_DIRECTORY=./chroma_db
+CHROMA_COLLECTION_NAME=diagnostic_policies
+
+# Pinecone
+PINECONE_API_KEY=
+PINECONE_ENVIRONMENT=
+PINECONE_INDEX_NAME=diagnostic-lab-rag
+
+# Qdrant
+QDRANT_URL=
+QDRANT_API_KEY=
+QDRANT_COLLECTION=diagnostic_policies
+```
+
+### 3. Exotel Telephony (India & Global)
+```ini
+EXOTEL_ACCOUNT_SID=
+EXOTEL_API_KEY=
+EXOTEL_API_TOKEN=
+EXOTEL_SUBDOMAIN=api.exotel.com
+EXOTEL_VIRTUAL_NUMBER=
+EXOTEL_APP_ID=
+EXOTEL_WEBHOOK_SECRET=
+```
+- Inbound Webhook: `POST /api/telephony/exotel/incoming`
+- Spoken Turn Webhook: `POST /api/telephony/exotel/turn`
+- Status Callback: `POST /api/telephony/exotel/status`
+- Outbound Call: `POST /api/telephony/exotel/call`
+
+---
+
 ## Testing Scenarios
 
-1. **Inbound Call Simulation**:
-   - Navigate to the **AI Phone Call Studio** tab.
-   - Choose a preset returning patient (e.g. `Robert Vance +1 (555) 234-5678`).
-   - Click **Dial Apex MediLab**.
-   - Speak or click the phrase: *"Do I need to fast for my Lipid Profile test?"*
-   - Watch the agent cite official policy and explain the 10-12 hour fasting requirement.
+1. **Inbound Call Simulation & Barge-In**:
+   - Click the **(562) 438-8802** telephone badge in the top right header to connect to Maya.
+   - Click **"Do I need to fast for Lipid test?"**
+   - While Maya is speaking, start talking into your microphone or click the **✋ Interrupt** button.
+   - Notice Maya stops speaking immediately!
 2. **Lab Report Query**:
    - Ask: *"Can you check my recent cholesterol results?"*
    - The agent reads out the latest values (Total Chol: 215 mg/dL) and offers to SMS the signed report.
-3. **Appointment Booking**:
-   - Ask: *"Please book a home blood sample collection for tomorrow morning at 7:30 AM."*
+3. **Appointment Booking (Doorstep vs. In-Situ)**:
+   - Ask: *"Please book a home blood sample collection for tomorrow morning at 7:30 AM."* or *"I want to visit the laboratory clinic in-situ tomorrow."*
    - The agent books the appointment in the database and dispatches a confirmation.
 4. **Multimodal Prescription OCR**:
-   - Navigate to the **Multimodal Prescription OCR** tab.
-   - Click **Load Dr. Mehta Sample Rx** and click **Analyze with Vision AI**.
-   - Review the auto-detected tests (CBC, Lipid, FBS, HbA1c, TSH) and 1-click book the home collection.
+   - Send prescription scans to `/api/prescriptions/upload`.
+5. **Automated Test Suite**:
+   - Run `.venv\Scripts\python.exe tests/test_system.py` to run all 6 test suites covering RAG, Voice Agent, Caller ID, Handover, Exotel Webhooks, and Barge-In.
+

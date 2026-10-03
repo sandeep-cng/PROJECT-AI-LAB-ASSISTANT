@@ -50,6 +50,8 @@ async def websocket_call_endpoint(websocket: WebSocket):
 def on_startup():
     init_and_seed_db()
 
+from backend.database import get_database_info
+
 # --- Health & Diagnostic Stats ---
 @app.get("/api/health")
 def health_check():
@@ -58,10 +60,18 @@ def health_check():
         "service": "Apex MediLab Multimodal AI System",
         "version": "2.0.0",
         "environment_variables": {
+            "agent_name": "Riya",
             "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
             "openai_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
             "twilio_configured": bool(os.getenv("TWILIO_ACCOUNT_SID", "").strip()),
-            "database": "Active (SQLite/PostgreSQL)"
+            "exotel_configured": bool(os.getenv("EXOTEL_ACCOUNT_SID", "").strip()),
+            "gmail_configured": bool(os.getenv("GMAIL_SENDER_EMAIL", "").strip()),
+            "whatsapp_configured": bool(os.getenv("WHATSAPP_API_KEY", "").strip() or os.getenv("TWILIO_ACCOUNT_SID", "").strip()),
+            "human_transfer_enabled": True,
+            "ambiguity_detection_active": True,
+            "database": get_database_info(),
+            "vector_db": rag_engine.get_info(),
+            "barge_in_enabled": os.getenv("BARGE_IN_ENABLED", "true").lower() == "true"
         }
     }
 
@@ -138,7 +148,42 @@ def create_appointment(data: dict, db: Session = Depends(get_db)):
     )
     db.add(appt)
     db.commit()
-    return appt.to_dict()
+
+    # Dispatch Gmail and WhatsApp confirmation
+    from backend.notifications import notification_service
+    patient = db.query(Patient).filter_by(id=patient_id).first()
+    notif_res = notification_service.send_appointment_confirmation(
+        patient_name=patient.full_name if patient else "Valued Patient",
+        patient_phone=patient.phone_number if patient else "+1 (555) 000-0000",
+        patient_email=patient.email if (patient and patient.email) else "patient@gmail.com",
+        appointment_id=appt.id,
+        appointment_type=appt.appointment_type,
+        scheduled_date=appt.scheduled_date or "Tomorrow",
+        time_slot=appt.time_slot,
+        tests_requested=appt.tests_requested or "Complete Blood Count (CBC)",
+        pickup_address=appt.pickup_address or "Residential Doorstep"
+    )
+    res_dict = appt.to_dict()
+    res_dict["notifications"] = notif_res
+    return res_dict
+
+@app.post("/api/notifications/test")
+def test_notifications_endpoint(data: dict):
+    from backend.notifications import notification_service
+    patient_name = data.get("patient_name", "Valued Patient")
+    phone = data.get("phone", "+1 (555) 234-5678")
+    email = data.get("email", "patient@gmail.com")
+    return notification_service.send_appointment_confirmation(
+        patient_name=patient_name,
+        patient_phone=phone,
+        patient_email=email,
+        appointment_id=777,
+        appointment_type="home_collection",
+        scheduled_date="2026-10-04",
+        time_slot="07:30 AM - 08:30 AM",
+        tests_requested="Comprehensive Lipid Profile & Fasting Blood Sugar",
+        pickup_address="5580 E. 2nd St, Suite 206"
+    )
 
 # --- Multimodal Prescription & Report Analysis ---
 @app.post("/api/prescriptions/upload")

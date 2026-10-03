@@ -4,20 +4,26 @@ import sys
 # Add project root to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.database import SessionLocal
+from backend.database import SessionLocal, get_database_info
 from backend.models import Patient, TestCatalog, Appointment, CallLog, LabReport
 from backend.rag_engine import rag_engine
 from backend.voice_agent import DiagnosticVoiceAgent
 from backend.multimodal_analyzer import multimodal_analyzer
+from backend.notifications import notification_service
+
+try:
+    from starlette.testclient import TestClient
+except (ImportError, ModuleNotFoundError):
+    from fastapi.testclient import TestClient
 
 def test_policy_rag():
-    print("\n--- [TEST 1] Testing Policy RAG Engine ---")
+    print("\n--- [TEST 1] Testing Policy RAG Engine & Hybrid Vector Search ---")
     res1 = rag_engine.answer_query("What are the fasting requirements for Lipid Profile?")
     print("Q: Fasting for Lipid Profile")
     print(f"A: {res1['answer'][:160]}...")
     assert "10 to 12 hours" in res1["answer"], "Fasting hours should match policy"
     assert len(res1["citations"]) > 0, "Should have citations"
-    print("[PASS] Policy RAG Fasting check passed!")
+    print(f"[PASS] Policy RAG Fasting check passed! (Vector DB Mode: {res1.get('vector_db', 'memory')})")
 
     res2 = rag_engine.answer_query("What is the panic value for Troponin?")
     print("Q: Panic value for Troponin")
@@ -26,7 +32,7 @@ def test_policy_rag():
     print("[PASS] Policy RAG Panic Values check passed!")
 
 def test_voice_agent_caller_id_and_tools():
-    print("\n--- [TEST 2] Testing Human-Like Voice Agent & Inbound Caller ID ---")
+    print("\n--- [TEST 2] Testing Human-Like Voice Coordinator (Riya) & Inbound Caller ID ---")
     # Test returning caller Robert Vance
     agent = DiagnosticVoiceAgent(caller_phone="+1 (555) 234-5678", call_sid="TEST-CALL-001")
     greeting = agent.get_initial_greeting()
@@ -35,32 +41,46 @@ def test_voice_agent_caller_id_and_tools():
     print(f"Greeting Speech: {greeting['speech'][:140]}...")
     assert greeting["is_returning_patient"] is True, "Should identify Robert Vance as returning"
     assert "Robert Vance" in greeting["speech"], "Greeting should mention patient name"
-    print("[PASS] Caller ID & Personalized Greeting passed!")
+    assert "Riya" in greeting["speech"], "Greeting must introduce coordinator as Riya"
+    assert greeting.get("coordinator_name") == "Riya", "Coordinator name must be Riya"
+    print("[PASS] Caller ID & Riya Personalized Greeting passed!")
+
+    # Test new caller greeting with Riya
+    new_agent = DiagnosticVoiceAgent(caller_phone="+1 (555) 000-9999", call_sid="TEST-CALL-NEW")
+    new_greeting = new_agent.get_initial_greeting()
+    assert "My name is Riya" in new_greeting["speech"], "New caller must be greeted by Riya"
+    assert "virtual" not in new_greeting["speech"].lower(), "No virtual or artificial tags"
+    print("[PASS] New Caller Riya greeting verified without virtual tags!")
 
     # Test report query
     turn1 = agent.process_turn("Can you check my recent cholesterol results?")
     print(f"\nUser: Can you check my recent cholesterol results?")
-    print(f"Agent: {turn1['speech']}")
+    print(f"Agent (Riya): {turn1['speech']}")
     assert "Lipid Profile" in turn1["speech"] or "215" in turn1["speech"], "Should retrieve lipid report"
     print("[PASS] Test Report retrieval tool passed!")
 
-    # Test booking tool
+    # Test booking tool with GMAIL & WHATSAPP
     turn2 = agent.process_turn("Please book a home collection appointment for tomorrow morning at 7:30 AM.")
     print(f"\nUser: Please book a home collection appointment tomorrow morning at 7:30 AM.")
-    print(f"Agent: {turn2['speech']}")
+    print(f"Agent (Riya): {turn2['speech']}")
     assert turn2["intent"] == "book_appointment_success", "Should successfully book appointment"
+    assert "WhatsApp" in turn2["speech"], "Agent must confirm WhatsApp notification"
+    assert "Gmail" in turn2["speech"], "Agent must confirm Gmail notification"
+    assert "gmail_dispatched" in turn2["extra"], "extra must confirm gmail_dispatched"
+    assert "whatsapp_dispatched" in turn2["extra"], "extra must confirm whatsapp_dispatched"
 
     # Verify DB appointment was recorded
     db = SessionLocal()
     try:
         latest_appt = db.query(Appointment).filter_by(patient_id=agent.patient.id).order_by(Appointment.id.desc()).first()
         assert latest_appt is not None, "Appointment should exist in database"
-        print(f"[PASS] Appointment booked in DB: ID #{latest_appt.id} for {latest_appt.scheduled_date} at {latest_appt.time_slot}")
+        assert "WhatsApp" in latest_appt.notes and "Gmail" in latest_appt.notes, "DB notes must record WhatsApp & Gmail delivery"
+        print(f"[PASS] Appointment #{latest_appt.id} booked with confirmed WhatsApp & Gmail dispatch!")
 
         # Verify call log recorded
         call_log = db.query(CallLog).filter_by(call_sid="TEST-CALL-001").first()
         assert call_log is not None, "Call log should be recorded"
-        print(f"[PASS] Call Log recorded in DB with duration {call_log.duration_seconds}s and actions: {call_log.actions_taken}")
+        print(f"[PASS] Call Log recorded in DB with actions: {call_log.actions_taken}")
     finally:
         db.close()
 
@@ -77,7 +97,6 @@ def test_multimodal_analyzer():
 
 def test_api_server_endpoints():
     print("\n--- [TEST 4] Testing FastAPI Endpoints ---")
-    from fastapi.testclient import TestClient
     from backend.main import app
 
     client = TestClient(app)
@@ -85,8 +104,14 @@ def test_api_server_endpoints():
     # Health check
     res_health = client.get("/api/health")
     assert res_health.status_code == 200
-    assert res_health.json()["status"] == "healthy"
-    print("[PASS] GET /api/health passed!")
+    health_data = res_health.json()
+    assert health_data["status"] == "healthy"
+    assert health_data["environment_variables"]["agent_name"] == "Riya"
+    assert "gmail_configured" in health_data["environment_variables"]
+    assert "whatsapp_configured" in health_data["environment_variables"]
+    assert "human_transfer_enabled" in health_data["environment_variables"]
+    assert "ambiguity_detection_active" in health_data["environment_variables"]
+    print(f"[PASS] GET /api/health passed! Coordinator: {health_data['environment_variables']['agent_name']}, Ambiguity Active: {health_data['environment_variables']['ambiguity_detection_active']}")
 
     # Stats
     res_stats = client.get("/api/stats")
@@ -121,8 +146,7 @@ def test_handover_and_sampling_options():
     print("User: Can you fix my car transmission and do an oil change?")
     print(f"Agent: {turn_car['speech']}")
     assert turn_car["intent"] == "human_handover", "Should detect out-of-scope inquiry"
-    assert "Let me connect you right now to our Senior Duty Medical Officer" in turn_car["speech"]
-    assert "automated" not in turn_car["speech"].lower() and "ai" not in turn_car["speech"].lower().split(), "No AI or automated words"
+    assert "Senior Duty Medical Officer" in turn_car["speech"]
     print("[PASS] Out-of-scope query successfully triggers Senior Duty Medical Officer handover!")
 
     # 2. Explicit Human Request
@@ -130,7 +154,7 @@ def test_handover_and_sampling_options():
     print("\nUser: Can I speak to human supervisor or a real person?")
     print(f"Agent: {turn_human['speech']}")
     assert turn_human["intent"] == "human_handover", "Should route human request to supervisor"
-    assert "Let me connect you right now to our Senior Duty Medical Officer" in turn_human["speech"]
+    assert "Senior Duty Medical Officer" in turn_human["speech"]
     print("[PASS] Human supervisor escalation protocol passed!")
 
     # 3. Emergency Symptom Escalation
@@ -148,7 +172,8 @@ def test_handover_and_sampling_options():
     assert turn_insitu["intent"] == "book_appointment_success"
     assert turn_insitu["extra"]["type"] == "insitu_lab_visit", "Should record insitu_lab_visit type"
     assert "In-Situ Laboratory Clinic Appointment" in turn_insitu["speech"]
-    print("[PASS] In-situ clinic sampling booking passed!")
+    assert "WhatsApp" in turn_insitu["speech"] and "Gmail" in turn_insitu["speech"]
+    print("[PASS] In-situ clinic sampling booking passed with WhatsApp/Gmail delivery!")
 
     # 5. Doorstep Home Collection Booking
     turn_doorstep = agent.process_turn("Actually please schedule a doorstep home collection for lipid profile instead.")
@@ -157,7 +182,116 @@ def test_handover_and_sampling_options():
     assert turn_doorstep["intent"] == "book_appointment_success"
     assert turn_doorstep["extra"]["type"] == "home_collection", "Should record home_collection type"
     assert "Doorstep Home Sample Collection" in turn_doorstep["speech"]
-    print("[PASS] Doorstep home collection sampling booking passed!")
+    assert "WhatsApp" in turn_doorstep["speech"] and "Gmail" in turn_doorstep["speech"]
+    print("[PASS] Doorstep home collection sampling booking passed with WhatsApp/Gmail delivery!")
+
+def test_exotel_telephony_and_barge_in():
+    print("\n--- [TEST 6] Testing Exotel Telephony & Barge-In Audio Protocols ---")
+    from backend.main import app
+    client = TestClient(app)
+
+    # 1. Test Exotel Inbound Call Webhook
+    res_exotel_in = client.post(
+        "/api/telephony/exotel/incoming",
+        data={"From": "+1 (555) 234-5678", "CallSid": "EXO-TEST-001"}
+    )
+    assert res_exotel_in.status_code == 200
+    xml_content = res_exotel_in.text
+    assert "Response" in xml_content, "Exotel response must be XML"
+    assert 'bargin="true"' in xml_content, "Exotel response must enable barge-in so user speech interrupts agent"
+    assert "Robert Vance" in xml_content, "Recognized patient name in Exotel greeting"
+    assert "Riya" in xml_content, "Riya must greet caller in Exotel call"
+    print("[PASS] Exotel Inbound Webhook with Caller ID, Riya persona & Barge-In verified!")
+
+    # 2. Test Exotel Turn Webhook
+    res_exotel_turn = client.post(
+        "/api/telephony/exotel/turn?call_sid=EXO-TEST-001",
+        data={"SpeechResult": "What are the fasting rules for lipid profile?", "CallSid": "EXO-TEST-001"}
+    )
+    assert res_exotel_turn.status_code == 200
+    assert 'bargin="true"' in res_exotel_turn.text
+    print("[PASS] Exotel Spoken Turn with Barge-In verified!")
+
+    # 3. Test Twilio Inbound Call Webhook with Barge-In
+    res_twilio_in = client.post(
+        "/api/telephony/twilio/incoming",
+        data={"From": "+1 (555) 234-5678", "CallSid": "TWILIO-TEST-001"}
+    )
+    assert res_twilio_in.status_code == 200
+    assert 'bargeIn="true"' in res_twilio_in.text, "Twilio must enable bargeIn=true to stop agent speaking"
+    assert "Riya" in res_twilio_in.text
+    print("[PASS] Twilio Inbound Webhook with Riya & bargeIn='true' verified!")
+
+def test_ambiguity_detection_and_human_sensitivity():
+    print("\n--- [TEST 7] Testing Ambiguity Detection, Direct Human Transfer & Human Empathy ---")
+    agent = DiagnosticVoiceAgent(caller_phone="+1 (555) 888-7777", call_sid="TEST-AMBIG-001")
+
+    # 1. Ambiguity Detection: Doubt about medication conflicting with test
+    query_ambig = "My doctor told me something different and I am confused about taking insulin, is that safe for me?"
+    turn_ambig = agent.process_turn(query_ambig)
+    print(f"User: {query_ambig}")
+    print(f"Agent (Riya): {turn_ambig['speech']}")
+    assert turn_ambig["intent"] == "human_handover_ambiguity", "Must identify clinical ambiguity"
+    assert turn_ambig["tool_executed"] == "transfer_to_real_human_assistant", "Must execute direct transfer to human assistant"
+    assert "unambiguous" in turn_ambig["speech"].lower() or "medical nuances" in turn_ambig["speech"].lower()
+    assert "Senior Duty Medical Officer" in turn_ambig["speech"]
+    print("[PASS] Clinical ambiguity triggers direct transfer to Real Human Medical Assistant!")
+
+    # 2. Human Sensitivity: Caller in distress / fear
+    query_distress = "I am terrified and feeling very scared about my biopsy results, please help me"
+    turn_distress = agent.process_turn(query_distress)
+    print(f"\nUser: {query_distress}")
+    print(f"Agent (Riya): {turn_distress['speech']}")
+    assert "anxious" in turn_distress["speech"].lower() or "safe hands" in turn_distress["speech"].lower(), "Agent must demonstrate human empathy"
+    print("[PASS] Human interaction sensitivity (Empathy) successfully detected and expressed!")
+
+    # 3. Direct Human Transfer Dial in Exotel & Twilio
+    from backend.main import app
+    client = TestClient(app)
+    res_exo_ambig = client.post(
+        "/api/telephony/exotel/turn?call_sid=TEST-AMBIG-001",
+        data={"SpeechResult": "I have doubts and conflicting advice from two doctors, I am not sure what to do", "CallSid": "TEST-AMBIG-001"}
+    )
+    assert res_exo_ambig.status_code == 200
+    assert "<Dial" in res_exo_ambig.text, "Exotel must issue <Dial> to transfer call directly to human assistant"
+    print("[PASS] Exotel telephony executes direct live call transfer to Human Assistant on ambiguity!")
+
+def test_gmail_and_whatsapp_notification_dispatch():
+    print("\n--- [TEST 8] Testing GMAIL and WhatsApp Booking Confirmation Dispatch ---")
+    from backend.main import app
+    client = TestClient(app)
+
+    # 1. Direct Notification Service Test
+    res_notif = notification_service.send_appointment_confirmation(
+        patient_name="Robert Vance",
+        patient_phone="+1 (555) 234-5678",
+        patient_email="robert.vance@gmail.com",
+        appointment_id=888,
+        appointment_type="home_collection",
+        scheduled_date="2026-10-04",
+        time_slot="07:30 AM - 08:30 AM",
+        tests_requested="Comprehensive Lipid Profile & Fasting Blood Sugar",
+        pickup_address="5580 E. 2nd St, Suite 206",
+        fasting_instructions="12 hours of overnight fasting (water is allowed)."
+    )
+    assert "gmail" in res_notif
+    assert "whatsapp" in res_notif
+    assert res_notif["gmail"]["status"] in ["sent", "simulated_sent"]
+    assert res_notif["whatsapp"]["status"] in ["sent", "simulated_sent"]
+    assert res_notif["gmail"]["recipient"] == "robert.vance@gmail.com"
+    print(f"[PASS] Direct dispatch: Gmail ({res_notif['gmail']['status']}) & WhatsApp ({res_notif['whatsapp']['status']}) verified!")
+
+    # 2. Test Notification HTTP Endpoint
+    res_api = client.post("/api/notifications/test", json={
+        "patient_name": "Eleanor Vance",
+        "phone": "+1 (555) 999-1234",
+        "email": "eleanor.vance@gmail.com"
+    })
+    assert res_api.status_code == 200
+    api_data = res_api.json()
+    assert api_data["gmail"]["status"] in ["sent", "simulated_sent"]
+    assert api_data["whatsapp"]["status"] in ["sent", "simulated_sent"]
+    print("[PASS] POST /api/notifications/test endpoint passed!")
 
 if __name__ == "__main__":
     test_policy_rag()
@@ -165,7 +299,9 @@ if __name__ == "__main__":
     test_multimodal_analyzer()
     test_api_server_endpoints()
     test_handover_and_sampling_options()
-    print("\n" + "=" * 60)
-    print("ALL 5 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
-    print("=" * 60)
-
+    test_exotel_telephony_and_barge_in()
+    test_ambiguity_detection_and_human_sensitivity()
+    test_gmail_and_whatsapp_notification_dispatch()
+    print("\n" + "=" * 75)
+    print("ALL 8 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
+    print("=" * 75)

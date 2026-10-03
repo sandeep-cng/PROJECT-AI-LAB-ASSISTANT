@@ -134,9 +134,9 @@
               <p>Over 14,000+ local families tested</p>
             </div>
             <div class="sample-attendant-card">
-              <div class="attendant-avatar">MA</div>
+              <div class="attendant-avatar">RI</div>
               <div class="attendant-meta">
-                <h5>Maya • Senior Care Coordinator</h5>
+                <h5>Riya • Senior Care Coordinator</h5>
                 <p>Ready to answer your call & book tests</p>
               </div>
               <span class="badge-online">ONLINE</span>
@@ -217,7 +217,7 @@
           <div class="step-number">02</div>
           <div class="step-icon">🎙️</div>
           <h3>Talk to Specialist</h3>
-          <p>Maya speaks naturally with you to understand your requirements, checks fasting protocols from verified clinical SOPs, and asks your preference for doorstep or in-situ sampling.</p>
+          <p>Riya speaks naturally with you to understand your requirements, checks fasting protocols from verified clinical SOPs, and asks your preference for doorstep or in-situ sampling.</p>
         </div>
 
         <div class="step-card">
@@ -474,7 +474,10 @@
       <!-- Active Audio Waveform -->
       <div class="modal-waveform-box">
         <div class="waveform-meta">
-          <span id="modal-audio-state">Voice Audio Active</span>
+          <div class="waveform-left-meta">
+            <span id="modal-audio-state">Voice Audio Active</span>
+            <span class="barge-in-badge" id="barge-in-badge" title="Instant Barge-In Active: Start speaking or typing at any time to interrupt the agent immediately!">⚡ Instant Barge-In Active</span>
+          </div>
           <span class="modal-timer" id="modal-timer">00:00</span>
         </div>
         <canvas id="modal-waveform-canvas" width="480" height="60"></canvas>
@@ -483,7 +486,7 @@
       <!-- Real-Time Speech Conversation Stream -->
       <div class="modal-transcript-feed" id="modal-transcript-feed">
         <div class="speech-bubble agent">
-          <div class="bubble-speaker">Maya (Care Specialist)</div>
+          <div class="bubble-speaker">Riya (Care Specialist)</div>
           <div class="bubble-text">Connecting your call to Apex Family Diagnostic customer care...</div>
         </div>
       </div>
@@ -496,8 +499,12 @@
 
       <!-- User Speaking Controls -->
       <div class="modal-speech-controls">
+        <div class="barge-in-hint">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          <span><strong>Instant Barge-in Active:</strong> Speak or type at any time — agent stops speaking immediately to listen to you.</span>
+        </div>
         <div class="input-speech-row">
-          <button class="btn-mic-round" id="btn-modal-mic" title="Click to Speak">
+          <button class="btn-mic-round" id="btn-modal-mic" title="Microphone Active • Speak anytime to interrupt">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
               <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
@@ -505,6 +512,7 @@
             </svg>
           </button>
           <input type="text" id="modal-user-text" placeholder="Speak into your microphone or type what you'd ask...">
+          <button class="btn-interrupt" id="btn-modal-interrupt" title="Click to Stop Agent Speaking (Barge-In)">✋ Interrupt</button>
           <button class="btn-primary" id="btn-modal-send">Send</button>
         </div>
 
@@ -513,9 +521,9 @@
           <span class="chips-label">Try Asking:</span>
           <button class="quick-chip" data-speak="Do I need to fast for my Lipid Profile test?">"Do I need to fast for Lipid test?"</button>
           <button class="quick-chip" data-speak="Can you check my recent cholesterol results?">"Check my test results"</button>
-          <button class="quick-chip" data-speak="Please book a doorstep home collection for tomorrow morning at 7:30 AM.">"Book doorstep home collection"</button>
+          <button class="quick-chip" data-speak="Please book a doorstep home collection for tomorrow morning and send confirmation to my WhatsApp and Gmail.">"Book & send WhatsApp/Gmail"</button>
+          <button class="quick-chip" data-speak="My doctor told me something different and I am confused about my medications, is that safe for me?">"Test Ambiguity & Human Transfer"</button>
           <button class="quick-chip" data-speak="I would like to book an in-situ clinic visit at your laboratory tomorrow.">"Book in-situ lab clinic visit"</button>
-          <button class="quick-chip" data-speak="Can you perform open heart surgery or repair my car?">"What if I ask something out of scope?"</button>
         </div>
       </div>
 

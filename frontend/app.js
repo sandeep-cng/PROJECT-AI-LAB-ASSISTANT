@@ -1,6 +1,7 @@
 // ==========================================================================
 // APEX FAMILY DIAGNOSTIC LAB - FRONTEND APPLICATION
 // Clean Clinic Experience with Dedicated Customer Support AI Agent
+// Features Instant Barge-In (Agent stops speaking the instant user speaks)
 // ==========================================================================
 
 let callSocket = null;
@@ -11,6 +12,13 @@ let isVoiceOutputEnabled = true;
 let isRecording = false;
 let recognition = null;
 let canvasAnimId = null;
+
+// Barge-In & Audio State Tracking
+let isAgentSpeaking = false;
+let audioContext = null;
+let analyser = null;
+let micStream = null;
+let vadThreshold = 0.035; // Voice activity detection threshold
 
 // DOM Elements
 const callModal = document.getElementById('call-modal');
@@ -23,6 +31,7 @@ const modalCallerDesc = document.getElementById('modal-caller-desc');
 const modalPhoneInput = document.getElementById('modal-phone-input');
 const modalAvatar = document.getElementById('modal-avatar');
 const modalTimer = document.getElementById('modal-timer');
+const modalAudioState = document.getElementById('modal-audio-state');
 const modalWaveformCanvas = document.getElementById('modal-waveform-canvas');
 const modalTranscriptFeed = document.getElementById('modal-transcript-feed');
 const modalActionBar = document.getElementById('modal-action-bar');
@@ -30,6 +39,8 @@ const modalActionText = document.getElementById('modal-action-text');
 const btnModalMic = document.getElementById('btn-modal-mic');
 const modalUserText = document.getElementById('modal-user-text');
 const btnModalSend = document.getElementById('btn-modal-send');
+const btnModalInterrupt = document.getElementById('btn-modal-interrupt');
+const bargeInBadge = document.getElementById('barge-in-badge');
 const packagesContainer = document.getElementById('packages-container');
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,6 +61,112 @@ function showToast(message) {
   setTimeout(() => toast.remove(), 3500);
 }
 
+// ==========================================================================
+// BARGE-IN INTERRUPTION ENGINE
+// Immediately halts agent speech playback the instant human voice or input is detected!
+// ==========================================================================
+function stopAgentSpeaking(reason = 'user_speaking') {
+  const wasSpeaking = isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking);
+  if (!wasSpeaking) return;
+
+  // 1. Immediately cancel Web Speech API TTS
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  isAgentSpeaking = false;
+
+  // 2. Update UI Indicators
+  if (modalAudioState) {
+    modalAudioState.textContent = 'Agent Paused (Barge-In Active)';
+    modalAudioState.style.color = '#f59e0b';
+  }
+  if (modalActionText) {
+    modalActionText.textContent = `⚡ Agent interrupted by you (${reason}) — listening to your request...`;
+    modalActionText.style.color = '#f59e0b';
+  }
+
+  // 3. Mark the interrupted agent speech bubble in transcript
+  const agentBubbles = modalTranscriptFeed.querySelectorAll('.speech-bubble.agent');
+  if (agentBubbles.length > 0) {
+    const lastBubble = agentBubbles[agentBubbles.length - 1];
+    if (!lastBubble.querySelector('.bubble-interrupted-tag')) {
+      const tag = document.createElement('span');
+      tag.className = 'bubble-interrupted-tag';
+      tag.textContent = ' [Interrupted by you]';
+      tag.style.color = '#f59e0b';
+      tag.style.fontSize = '0.74rem';
+      tag.style.fontWeight = '600';
+      tag.style.marginLeft = '6px';
+      lastBubble.querySelector('.bubble-speaker').appendChild(tag);
+    }
+  }
+
+  // 4. Send cancellation signal to server WebSocket
+  if (!useRestFallback && callSocket && callSocket.readyState === WebSocket.OPEN) {
+    callSocket.send(JSON.stringify({
+      type: 'user_interrupt',
+      reason: reason,
+      timestamp: Date.now()
+    }));
+  }
+
+  console.log(`[Barge-In Active] Agent speech halted: ${reason}`);
+}
+
+// Hardware-level Voice Activity Detection (VAD) via Web Audio API Analyser
+async function startVoiceActivityDetection() {
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    if (!audioContext) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AudioCtx();
+    }
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    const source = audioContext.createMediaStreamSource(micStream);
+    source.connect(analyser);
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    function monitorVoiceEnergy() {
+      if (!isCallActive) return;
+
+      analyser.getByteTimeDomainData(dataArray);
+      let sumSquares = 0.0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const norm = (dataArray[i] - 128) / 128;
+        sumSquares += norm * norm;
+      }
+      const rms = Math.sqrt(sumSquares / dataArray.length);
+
+      // If user voice energy exceeds threshold while agent is speaking -> INSTANT BARGE IN!
+      if (rms > vadThreshold && (isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking))) {
+        stopAgentSpeaking('mic_voice_energy_vad');
+      }
+
+      requestAnimationFrame(monitorVoiceEnergy);
+    }
+    requestAnimationFrame(monitorVoiceEnergy);
+  } catch (err) {
+    console.log('Voice Activity Detection note:', err);
+  }
+}
+
+function stopVoiceActivityDetection() {
+  if (micStream) {
+    micStream.getTracks().forEach(track => track.stop());
+    micStream = null;
+  }
+}
+
 // --- Direct Customer Support Call Triggers ---
 function initCallTriggers() {
   headerCallTrigger.addEventListener('click', () => openCallModal());
@@ -68,14 +185,37 @@ function initCallTriggers() {
     checkCallerId(modalPhoneInput.value);
   });
 
-  btnModalSend.addEventListener('click', sendUserSpeechTurn);
-  modalUserText.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendUserSpeechTurn();
+  btnModalSend.addEventListener('click', () => {
+    stopAgentSpeaking('send_button_pressed');
+    sendUserSpeechTurn();
   });
 
-  // Quick chips
+  modalUserText.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      stopAgentSpeaking('enter_key_pressed');
+      sendUserSpeechTurn();
+    }
+  });
+
+  // Typing immediately stops agent speaking (instant responsive barge-in)
+  modalUserText.addEventListener('input', () => {
+    if (isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking)) {
+      stopAgentSpeaking('user_typing');
+    }
+  });
+
+  // Dedicated manual interrupt button
+  if (btnModalInterrupt) {
+    btnModalInterrupt.addEventListener('click', () => {
+      stopAgentSpeaking('manual_interrupt_button');
+      modalUserText.focus();
+    });
+  }
+
+  // Quick chips: clicking any chip halts agent speech immediately
   document.querySelectorAll('.quick-chip').forEach(chip => {
     chip.addEventListener('click', () => {
+      stopAgentSpeaking('quick_chip_selected');
       modalUserText.value = chip.dataset.speak;
       sendUserSpeechTurn();
     });
@@ -115,7 +255,6 @@ async function checkCallerId(phone) {
 let currentCallSid = null;
 let useRestFallback = false;
 
-// --- Active Call Engine ---
 function startCallSession(preferredTest = null) {
   const phone = modalPhoneInput.value.trim() || '+1 (555) 234-5678';
   isCallActive = true;
@@ -125,6 +264,16 @@ function startCallSession(preferredTest = null) {
   modalCallStatus.style.color = '#34d399';
   modalTranscriptFeed.innerHTML = '';
   checkCallerId(phone);
+
+  // Initialize VAD & Speech Recognition
+  startVoiceActivityDetection();
+  if (recognition) {
+    try {
+      recognition.start();
+    } catch (e) {
+      // already active
+    }
+  }
 
   // Timer
   callDuration = 0;
@@ -136,7 +285,7 @@ function startCallSession(preferredTest = null) {
     modalTimer.textContent = `${mins}:${secs}`;
   }, 1000);
 
-  // Attempt WebSocket first; seamlessly fall back to REST on serverless platforms (Vercel)
+  // Attempt WebSocket first; seamlessly fall back to REST on serverless platforms
   try {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     callSocket = new WebSocket(`${protocol}//${window.location.host}/ws/phone-call`);
@@ -159,26 +308,40 @@ function startCallSession(preferredTest = null) {
       const msg = JSON.parse(event.data);
       if (msg.type === 'call_connected') {
         currentCallSid = msg.call_sid;
-        appendSpeechBubble('Maya (Care Specialist)', msg.speech, 'agent');
+        appendSpeechBubble('Riya (Care Specialist)', msg.speech, 'agent');
         speakAudio(msg.speech);
       } else if (msg.type === 'agent_response') {
-        appendSpeechBubble('Maya (Care Specialist)', msg.speech, 'agent');
+        appendSpeechBubble('Riya (Care Specialist)', msg.speech, 'agent');
         speakAudio(msg.speech);
+
+        if (msg.intent === 'human_handover_ambiguity') {
+          appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '(562) 438-8802');
+        } else if (msg.intent === 'emergency_transfer') {
+          appendTransferCard('Emergency Clinical Response Desk', 'Emergency Red-Flag Symptoms', '911 / (562) 438-8802');
+        } else if (msg.intent === 'human_handover' || msg.intent === 'out_of_scope_transfer') {
+          appendTransferCard('Senior Human Clinical Desk', 'Specialist Consultation Required', '(562) 438-8802');
+        } else if (msg.intent === 'book_appointment_success') {
+          appendConfirmationBadges(msg.extra || {});
+        }
 
         if (msg.actions_taken && msg.actions_taken.length > 0) {
           modalActionText.textContent = msg.actions_taken[msg.actions_taken.length - 1];
+          modalActionText.style.color = 'var(--text-muted)';
+        }
+      } else if (msg.type === 'agent_interrupted') {
+        if (modalActionText) {
+          modalActionText.textContent = `⚡ Agent speech paused — listening to you...`;
         }
       }
     };
 
     callSocket.onerror = () => {
-      console.log('WebSocket not supported by environment, switching to HTTP REST API');
+      console.log('WebSocket not supported, switching to HTTP REST API');
       startRestCallSession(phone, preferredTest);
     };
 
     callSocket.onclose = () => {
       if (isCallActive && !useRestFallback) {
-        // If closed prematurely without user hangup, transition to REST
         useRestFallback = true;
       }
     };
@@ -198,7 +361,7 @@ async function startRestCallSession(phone, preferredTest = null) {
     if (res.ok) {
       const data = await res.json();
       currentCallSid = data.call_sid;
-      appendSpeechBubble('Maya (Care Specialist)', data.speech, 'agent');
+      appendSpeechBubble('Riya (Care Specialist)', data.speech, 'agent');
       speakAudio(data.speech);
 
       if (preferredTest) {
@@ -216,18 +379,34 @@ async function startRestCallSession(phone, preferredTest = null) {
 function endCallSession() {
   isCallActive = false;
   clearInterval(callTimerInterval);
+  stopAgentSpeaking('call_ended');
+  stopVoiceActivityDetection();
+
+  if (recognition) {
+    try {
+      recognition.stop();
+    } catch (e) {}
+  }
+
   if (callSocket && callSocket.readyState === WebSocket.OPEN) {
     callSocket.send(JSON.stringify({ type: 'hangup' }));
     callSocket.close();
   }
   modalCallStatus.textContent = 'Call Disconnected';
   modalCallStatus.style.color = '#ef4444';
+  if (modalAudioState) {
+    modalAudioState.textContent = 'Call Ended';
+    modalAudioState.style.color = '#94a3b8';
+  }
   showToast('Call ended. Your appointment & call summary have been saved.');
 }
 
 async function sendUserSpeechTurn() {
   const text = modalUserText.value.trim();
   if (!text) return;
+
+  // Stop any lingering audio immediately
+  stopAgentSpeaking('user_sent_speech');
 
   appendSpeechBubble('You', text, 'user');
   modalUserText.value = '';
@@ -252,11 +431,18 @@ async function sendUserSpeechTurn() {
       });
       if (res.ok) {
         const data = await res.json();
-        appendSpeechBubble('Maya (Care Specialist)', data.speech, 'agent');
+        appendSpeechBubble('Riya (Care Specialist)', data.speech, 'agent');
         speakAudio(data.speech);
+
+        if (data.intent === 'human_handover_ambiguity') {
+          appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '(562) 438-8802');
+        } else if (data.intent === 'book_appointment_success') {
+          appendConfirmationBadges(data.extra || {});
+        }
 
         if (data.actions_taken && data.actions_taken.length > 0) {
           modalActionText.textContent = data.actions_taken[data.actions_taken.length - 1];
+          modalActionText.style.color = 'var(--text-muted)';
         }
       }
     } catch (err) {
@@ -276,7 +462,37 @@ function appendSpeechBubble(speaker, text, type) {
   modalTranscriptFeed.scrollTop = modalTranscriptFeed.scrollHeight;
 }
 
-// --- Text-to-Speech (Human-Like Spoken Feedback) ---
+function appendTransferCard(department, reason, phone) {
+  const card = document.createElement('div');
+  card.className = 'speech-transfer-card';
+  card.innerHTML = `
+    <div class="transfer-card-header">
+      <span class="transfer-icon">📞</span>
+      <strong>DIRECT CLINICAL TRANSFER INITIATED</strong>
+    </div>
+    <div class="transfer-card-body">
+      <p><strong>Department:</strong> ${department}</p>
+      <p><strong>Reason:</strong> ${reason}</p>
+      <p><strong>Direct Line:</strong> <a href="tel:${phone}" style="color: #0284c7; font-weight: 700;">${phone}</a></p>
+      <div class="transfer-pulse-bar"><span class="transfer-dot"></span> Connecting caller directly to Senior Human Medical Officer...</div>
+    </div>
+  `;
+  modalTranscriptFeed.appendChild(card);
+  modalTranscriptFeed.scrollTop = modalTranscriptFeed.scrollHeight;
+}
+
+function appendConfirmationBadges(extra) {
+  const badgesRow = document.createElement('div');
+  badgesRow.className = 'speech-confirmation-badges';
+  badgesRow.innerHTML = `
+    <span class="badge-notif-whatsapp">💬 WhatsApp Dispatched (${extra.whatsapp_dispatched || 'Active'})</span>
+    <span class="badge-notif-gmail">✉️ Gmail Dispatched (${extra.gmail_dispatched || 'Active'})</span>
+  `;
+  modalTranscriptFeed.appendChild(badgesRow);
+  modalTranscriptFeed.scrollTop = modalTranscriptFeed.scrollHeight;
+}
+
+// --- Text-to-Speech (Human-Like Spoken Feedback with Active State Tracking) ---
 function speakAudio(text) {
   if (!isVoiceOutputEnabled || !('speechSynthesis' in window)) return;
 
@@ -286,6 +502,26 @@ function speakAudio(text) {
   utterance.rate = 1.0;
   utterance.pitch = 1.04;
 
+  utterance.onstart = () => {
+    isAgentSpeaking = true;
+    if (modalAudioState) {
+      modalAudioState.textContent = 'Riya is Speaking (Speak anytime to interrupt)';
+      modalAudioState.style.color = '#38bdf8';
+    }
+  };
+
+  utterance.onend = () => {
+    isAgentSpeaking = false;
+    if (modalAudioState) {
+      modalAudioState.textContent = 'Voice Audio Active (Listening)';
+      modalAudioState.style.color = '#34d399';
+    }
+  };
+
+  utterance.onerror = (e) => {
+    isAgentSpeaking = false;
+  };
+
   const voices = window.speechSynthesis.getVoices();
   const naturalVoice = voices.find(v => v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Jenny') || v.lang.startsWith('en'));
   if (naturalVoice) utterance.voice = naturalVoice;
@@ -293,7 +529,7 @@ function speakAudio(text) {
   window.speechSynthesis.speak(utterance);
 }
 
-// --- Speech-to-Text (Microphone) ---
+// --- Speech-to-Text (Microphone with Continuous Barge-In) ---
 function initSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -302,8 +538,8 @@ function initSpeechRecognition() {
   }
 
   recognition = new SpeechRecognition();
-  recognition.continuous = false;
-  recognition.interimResults = false;
+  recognition.continuous = true;       // Keep listening during entire call
+  recognition.interimResults = true;    // Instant phoneme / speech detection
   recognition.lang = 'en-US';
 
   recognition.onstart = () => {
@@ -311,27 +547,67 @@ function initSpeechRecognition() {
     btnModalMic.classList.add('recording');
   };
 
-  recognition.onresult = (event) => {
-    const spoken = event.results[0][0].transcript;
-    modalUserText.value = spoken;
-    sendUserSpeechTurn();
+  // Instant speech start callback -> HALTS AGENT SPEECH IMMEDIATELY!
+  recognition.onspeechstart = () => {
+    stopAgentSpeaking('speech_start_detected');
   };
 
-  recognition.onerror = () => {
-    isRecording = false;
-    btnModalMic.classList.remove('recording');
+  recognition.onsoundstart = () => {
+    stopAgentSpeaking('sound_start_detected');
+  };
+
+  recognition.onresult = (event) => {
+    // If agent is speaking, halt it the instant any voice word is recognized
+    stopAgentSpeaking('speech_in_progress');
+
+    let interimTranscript = '';
+    let finalTranscript = '';
+
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript;
+      } else {
+        interimTranscript += event.results[i][0].transcript;
+      }
+    }
+
+    if (interimTranscript) {
+      modalUserText.value = interimTranscript;
+    }
+
+    if (finalTranscript.trim()) {
+      modalUserText.value = finalTranscript.trim();
+      sendUserSpeechTurn();
+    }
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error !== 'no-speech') {
+      console.log('Speech recognition notice:', event.error);
+    }
   };
 
   recognition.onend = () => {
     isRecording = false;
     btnModalMic.classList.remove('recording');
+    // If call is still active, automatically restart recognition so user never misses a turn
+    if (isCallActive) {
+      try {
+        recognition.start();
+      } catch (e) {}
+    }
   };
 
   btnModalMic.addEventListener('click', () => {
+    stopAgentSpeaking('mic_button_clicked');
     if (!isRecording) {
-      recognition.start();
+      try {
+        recognition.start();
+      } catch (e) {}
     } else {
-      recognition.stop();
+      try {
+        recognition.stop();
+      } catch (e) {}
     }
   });
 }
@@ -351,7 +627,13 @@ function initModalVisualizer() {
       let barHeight;
       if (isCallActive) {
         const t = Date.now() * 0.005;
-        barHeight = Math.sin(t + i * 0.35) * 16 + Math.cos(t * 0.9 + i * 0.2) * 10 + 22;
+        if (isAgentSpeaking) {
+          // Dynamic tall waves when agent is talking
+          barHeight = Math.sin(t + i * 0.35) * 18 + Math.cos(t * 0.9 + i * 0.2) * 12 + 24;
+        } else {
+          // Gentle ambient listening ripples when listening to user
+          barHeight = Math.sin(t * 0.6 + i * 0.2) * 6 + 10;
+        }
       } else {
         barHeight = 4;
       }
@@ -360,8 +642,13 @@ function initModalVisualizer() {
       const y = (height - barHeight) / 2;
 
       const gradient = ctx.createLinearGradient(0, y, 0, y + barHeight);
-      gradient.addColorStop(0, '#0170B9');
-      gradient.addColorStop(1, '#38bdf8');
+      if (isAgentSpeaking) {
+        gradient.addColorStop(0, '#0170B9');
+        gradient.addColorStop(1, '#38bdf8');
+      } else {
+        gradient.addColorStop(0, '#10b981');
+        gradient.addColorStop(1, '#34d399');
+      }
 
       ctx.fillStyle = gradient;
       ctx.fillRect(x, y, barWidth, barHeight);
