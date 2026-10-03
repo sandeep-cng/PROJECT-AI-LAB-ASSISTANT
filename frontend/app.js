@@ -308,10 +308,10 @@ function startCallSession(preferredTest = null) {
       const msg = JSON.parse(event.data);
       if (msg.type === 'call_connected') {
         currentCallSid = msg.call_sid;
-        appendSpeechBubble('Riya (Care Specialist)', msg.speech, 'agent');
+        appendSpeechBubble('Vinod (Care Specialist)', msg.speech, 'agent');
         speakAudio(msg.speech);
       } else if (msg.type === 'agent_response') {
-        appendSpeechBubble('Riya (Care Specialist)', msg.speech, 'agent');
+        appendSpeechBubble('Vinod (Care Specialist)', msg.speech, 'agent');
         speakAudio(msg.speech);
 
         if (msg.intent === 'human_handover_ambiguity') {
@@ -431,7 +431,7 @@ async function sendUserSpeechTurn() {
       });
       if (res.ok) {
         const data = await res.json();
-        appendSpeechBubble('Riya (Care Specialist)', data.speech, 'agent');
+        appendSpeechBubble('Vinod (Care Specialist)', data.speech, 'agent');
         speakAudio(data.speech);
 
         if (data.intent === 'human_handover_ambiguity') {

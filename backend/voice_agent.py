@@ -34,6 +34,7 @@ class DiagnosticVoiceAgent:
         self.history: List[Dict[str, str]] = []
         self.actions_taken: List[str] = []
         self.detected_intent: str = "general_inquiry"
+        self.agent_name: str = os.getenv("AGENT_NAME", "Vinod")
 
         # Initialize session and lookup caller
         self._lookup_caller()
@@ -66,22 +67,22 @@ class DiagnosticVoiceAgent:
             if recent_report:
                 greeting = (
                     f"Hello {self.patient.full_name}, thank you for calling Apex Family Diagnostic Lab! "
-                    f"My name is Riya, your care coordinator. I see you recently had tests with us. "
+                    f"My name is {self.agent_name}, your care coordinator. I see you recently had tests with us. "
                     f"Are you calling to review your recent results, or would you like to schedule a new test today? "
                     f"We offer both doorstep home sample collection and in-situ clinic appointments."
                 )
             else:
                 greeting = (
                     f"Hello {self.patient.full_name}, thank you for calling Apex Family Diagnostic Lab! "
-                    f"My name is Riya, your care coordinator. It is wonderful to hear from you again. "
+                    f"My name is {self.agent_name}, your care coordinator. It is wonderful to hear from you again. "
                     f"How can I assist you today? Would you like to book a doorstep sample draw or an in-situ laboratory clinic visit?"
                 )
             caller_name = self.patient.full_name
         else:
             greeting = (
-                "Thank you for calling Apex Family Diagnostic Lab! My name is Riya, your dedicated care coordinator. "
-                "I can help you schedule a doorstep home collection, reserve an in-situ lab clinic appointment, "
-                "or explain pre-test fasting guidelines. How may I assist you today?"
+                f"Thank you for calling Apex Family Diagnostic Lab! My name is {self.agent_name}, your dedicated care coordinator. "
+                f"I can help you schedule a doorstep home collection, reserve an in-situ lab clinic appointment, "
+                f"or explain pre-test fasting guidelines. How may I assist you today?"
             )
             caller_name = "New Caller"
 
@@ -93,7 +94,7 @@ class DiagnosticVoiceAgent:
             "is_returning_patient": bool(self.patient),
             "call_sid": self.call_sid,
             "action": "greeting",
-            "coordinator_name": "Riya"
+            "coordinator_name": self.agent_name
         }
 
     def _detect_human_empathy_prefix(self, user_lower: str) -> str:
@@ -481,7 +482,7 @@ class DiagnosticVoiceAgent:
             "actions_taken": self.actions_taken,
             "caller_phone": self.caller_phone,
             "patient_name": self.patient.full_name if self.patient else "Guest Caller",
-            "coordinator_name": "Riya"
+            "coordinator_name": self.agent_name
         }
         if extra:
             payload["extra"] = extra

@@ -14,7 +14,10 @@ class NotificationService:
     via GMAIL (SMTP / HTML Email) and WhatsApp (Twilio / Meta / Exotel / Simulation).
     """
     def __init__(self):
-        # Gmail / SMTP Configuration
+        self._refresh_credentials()
+
+    def _refresh_credentials(self):
+        """Refreshes credential variables dynamically from environment on each dispatch."""
         self.gmail_host = os.getenv("GMAIL_SMTP_HOST", "smtp.gmail.com").strip()
         self.gmail_port = int(os.getenv("GMAIL_SMTP_PORT", "587").strip())
         self.gmail_sender = os.getenv("GMAIL_SENDER_EMAIL", "").strip()
@@ -49,8 +52,10 @@ class NotificationService:
         Sends rich HTML and plain-text booking confirmation to the patient's Gmail.
         Operates in live SMTP mode when credentials exist, or high-fidelity simulation mode.
         """
+        self._refresh_credentials()
         target_email = to_email or "patient@gmail.com"
         type_label = "Doorstep Home Sample Collection" if appointment_type == "home_collection" else "In-Situ Laboratory Clinic Visit"
+        agent_name = os.getenv("AGENT_NAME", "Vinod")
         agent_phone = os.getenv("AGENT_PHONE_NUMBER", "+91 80 4388 8802")
 
         subject = f"Appointment Confirmed: {type_label} - Apex MediLab (Ref #{appointment_id})"
@@ -85,7 +90,7 @@ class NotificationService:
             <div class="content">
               <span class="badge">BOOKING CONFIRMED • ID #{appointment_id}</span>
               <p style="margin-top: 14px;">Dear <strong>{patient_name}</strong>,</p>
-              <p>Thank you for choosing Apex Family Diagnostic Lab. Your <strong>{type_label}</strong> has been successfully booked by your dedicated care coordinator, <strong>Riya</strong>.</p>
+              <p>Thank you for choosing Apex Family Diagnostic Lab. Your <strong>{type_label}</strong> has been successfully booked by your dedicated care coordinator, <strong>{agent_name}</strong>.</p>
               
               <div class="details-box">
                 <div class="detail-row"><span class="label">Appointment ID:</span><span class="value">#{appointment_id}</span></div>
@@ -103,7 +108,7 @@ class NotificationService:
 
               <p style="font-size: 13px; color: #475569;">
                 Our certified phlebotomist will arrive equipped with a sterile vacuum collection kit and temperature-controlled cold box (2°C - 8°C).
-                If you have any doubts, questions, or wish to reschedule, simply reply to this email or call Riya at <strong>{agent_phone}</strong>.
+                If you have any doubts, questions, or wish to reschedule, simply reply to this email or call {agent_name} at <strong>{agent_phone}</strong>.
               </p>
             </div>
             <div class="footer">
@@ -117,14 +122,14 @@ class NotificationService:
         plain_text = (
             f"Apex Family Diagnostic Lab - Booking Confirmed (#{appointment_id})\n\n"
             f"Dear {patient_name},\n"
-            f"Your appointment has been confirmed by care coordinator Riya:\n"
+            f"Your appointment has been confirmed by care coordinator {agent_name}:\n"
             f"• Service: {type_label}\n"
             f"• Date: {scheduled_date}\n"
             f"• Time Slot: {time_slot}\n"
             f"• Tests: {tests_requested}\n"
             f"• Address: {pickup_address}\n\n"
             f"Pre-Test Instructions: {fasting_instructions}\n\n"
-            f"Support Hotline (Riya): {agent_phone}\n"
+            f"Support Hotline ({agent_name}): {agent_phone}\n"
         )
 
         # Send via Live Gmail SMTP if configured
@@ -183,18 +188,20 @@ class NotificationService:
         Sends formatted WhatsApp message with booking details, fasting rules, and clinic helpline.
         Supports Twilio WhatsApp API, Meta Cloud WhatsApp API, and simulated mode.
         """
+        self._refresh_credentials()
         clean_phone = to_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         if not clean_phone.startswith("+"):
             default_cc = os.getenv("DEFAULT_COUNTRY_CODE", "+91")
             clean_phone = f"{default_cc}{clean_phone}" if len(clean_phone) == 10 else f"+{clean_phone}"
 
         type_label = "Doorstep Home Sample Collection 🏡" if appointment_type == "home_collection" else "In-Situ Laboratory Clinic Visit 🏥"
+        agent_name = os.getenv("AGENT_NAME", "Vinod")
         agent_phone = os.getenv("AGENT_PHONE_NUMBER", "+91 80 4388 8802")
 
         whatsapp_message = (
             f"✅ *APEX FAMILY DIAGNOSTIC LAB - BOOKING CONFIRMED*\n\n"
             f"Hello *{patient_name}*,\n"
-            f"Your appointment has been scheduled by care coordinator *Riya*.\n\n"
+            f"Your appointment has been scheduled by care coordinator *{agent_name}*.\n\n"
             f"📋 *Appointment ID:* #{appointment_id}\n"
             f"🔬 *Service:* {type_label}\n"
             f"📅 *Date:* {scheduled_date}\n"
@@ -203,7 +210,7 @@ class NotificationService:
             f"📍 *Location:* {pickup_address}\n\n"
             f"⚠️ *Fasting Guidelines:* {fasting_instructions}\n\n"
             f"🧊 Our phlebotomist will arrive with a sterile vacuum kit and cold chain preservation box.\n\n"
-            f"📞 Questions or doubts? Call Riya anytime at *{agent_phone}*."
+            f"📞 Questions or doubts? Call {agent_name} anytime at *{agent_phone}*."
         )
 
         # Twilio WhatsApp Dispatch

@@ -60,7 +60,7 @@ def health_check():
         "service": "Apex MediLab Multimodal AI System",
         "version": "2.0.0",
         "environment_variables": {
-            "agent_name": "Riya",
+            "agent_name": os.getenv("AGENT_NAME", "Vinod"),
             "agent_phone_number": os.getenv("AGENT_PHONE_NUMBER", "+918043888802"),
             "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
             "openai_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),

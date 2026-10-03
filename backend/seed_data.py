@@ -242,10 +242,10 @@ def init_and_seed_db():
         if db.query(Patient).count() == 0:
             print("Seeding sample patients for instant caller ID lookup...")
             p1 = Patient(
-                full_name="Vinod",
+                full_name="Rohan Mehta",
                 phone_number="+91 98200 23456",
-                email="vinod@example.com",
-                dob="1975-06-15",
+                email="rohan.mehta@example.com",
+                dob="1982-05-14",
                 gender="Male",
                 blood_group="O+",
                 address="42 Green Glen Layout, Bellandur, Bengaluru",
@@ -359,14 +359,19 @@ def init_and_seed_db():
                 phone="+1 (555) 444-5678",
                 license_number="MED-MA-61029"
             )
-        # Ensure any previously seeded Robert Vance records are updated to Vinod (+91 98200 23456)
-        existing_robert = db.query(Patient).filter(Patient.full_name.like("%Robert Vance%")).first()
-        if existing_robert:
-            existing_robert.full_name = "Vinod"
-            existing_robert.phone_number = "+91 98200 23456"
-            existing_robert.email = "vinod@example.com"
-            existing_robert.address = "42 Green Glen Layout, Bellandur, Bengaluru"
-            existing_robert.emergency_contact = "+91 98200 99999"
+        # Ensure patient p1 with phone +91 98200 23456 is registered as Rohan Mehta (agent is Vinod)
+        p1_record = db.query(Patient).filter(
+            (Patient.phone_number.like("%9820023456%")) |
+            (Patient.phone_number.like("%98200 23456%")) |
+            (Patient.full_name == "Robert Vance") |
+            (Patient.full_name == "Vinod")
+        ).first()
+        if p1_record:
+            p1_record.full_name = "Rohan Mehta"
+            p1_record.phone_number = "+91 98200 23456"
+            p1_record.email = "rohan.mehta@example.com"
+            p1_record.address = "42 Green Glen Layout, Bellandur, Bengaluru"
+            p1_record.emergency_contact = "+91 98200 99999"
             db.commit()
 
         print("Database initialized and pre-seeded successfully!")

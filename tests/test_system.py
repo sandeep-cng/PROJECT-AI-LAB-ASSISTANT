@@ -32,37 +32,37 @@ def test_policy_rag():
     print("[PASS] Policy RAG Panic Values check passed!")
 
 def test_voice_agent_caller_id_and_tools():
-    print("\n--- [TEST 2] Testing Human-Like Voice Coordinator (Riya) & Inbound Caller ID ---")
-    # Test returning caller Vinod
+    print("\n--- [TEST 2] Testing Human-Like Voice Coordinator (Vinod) & Inbound Caller ID ---")
+    # Test returning caller Rohan Mehta
     agent = DiagnosticVoiceAgent(caller_phone="+91 98200 23456", call_sid="TEST-CALL-001")
     greeting = agent.get_initial_greeting()
     print(f"Caller Phone: {agent.caller_phone}")
     print(f"Recognized Patient: {greeting['caller_name']}")
     print(f"Greeting Speech: {greeting['speech'][:140]}...")
-    assert greeting["is_returning_patient"] is True, "Should identify Vinod as returning"
-    assert "Vinod" in greeting["speech"], "Greeting should mention patient name"
-    assert "Riya" in greeting["speech"], "Greeting must introduce coordinator as Riya"
-    assert greeting.get("coordinator_name") == "Riya", "Coordinator name must be Riya"
-    print("[PASS] Caller ID & Riya Personalized Greeting passed!")
+    assert greeting["is_returning_patient"] is True, "Should identify Rohan Mehta as returning"
+    assert "Rohan" in greeting["speech"], "Greeting should mention patient name"
+    assert "Vinod" in greeting["speech"], "Greeting must introduce coordinator as Vinod"
+    assert greeting.get("coordinator_name") == "Vinod", "Coordinator name must be Vinod"
+    print("[PASS] Caller ID & Vinod Personalized Greeting passed!")
 
-    # Test new caller greeting with Riya
+    # Test new caller greeting with Vinod
     new_agent = DiagnosticVoiceAgent(caller_phone="+1 (555) 000-9999", call_sid="TEST-CALL-NEW")
     new_greeting = new_agent.get_initial_greeting()
-    assert "My name is Riya" in new_greeting["speech"], "New caller must be greeted by Riya"
+    assert "My name is Vinod" in new_greeting["speech"], "New caller must be greeted by Vinod"
     assert "virtual" not in new_greeting["speech"].lower(), "No virtual or artificial tags"
-    print("[PASS] New Caller Riya greeting verified without virtual tags!")
+    print("[PASS] New Caller Vinod greeting verified without virtual tags!")
 
     # Test report query
     turn1 = agent.process_turn("Can you check my recent cholesterol results?")
     print(f"\nUser: Can you check my recent cholesterol results?")
-    print(f"Agent (Riya): {turn1['speech']}")
+    print(f"Agent (Vinod): {turn1['speech']}")
     assert "Lipid Profile" in turn1["speech"] or "215" in turn1["speech"], "Should retrieve lipid report"
     print("[PASS] Test Report retrieval tool passed!")
 
     # Test booking tool with GMAIL & WHATSAPP
     turn2 = agent.process_turn("Please book a home collection appointment for tomorrow morning at 7:30 AM.")
     print(f"\nUser: Please book a home collection appointment tomorrow morning at 7:30 AM.")
-    print(f"Agent (Riya): {turn2['speech']}")
+    print(f"Agent (Vinod): {turn2['speech']}")
     assert turn2["intent"] == "book_appointment_success", "Should successfully book appointment"
     assert "WhatsApp" in turn2["speech"], "Agent must confirm WhatsApp notification"
     assert "Gmail" in turn2["speech"], "Agent must confirm Gmail notification"
@@ -106,7 +106,7 @@ def test_api_server_endpoints():
     assert res_health.status_code == 200
     health_data = res_health.json()
     assert health_data["status"] == "healthy"
-    assert health_data["environment_variables"]["agent_name"] == "Riya"
+    assert health_data["environment_variables"]["agent_name"] == "Vinod"
     assert "gmail_configured" in health_data["environment_variables"]
     assert "whatsapp_configured" in health_data["environment_variables"]
     assert "human_transfer_enabled" in health_data["environment_variables"]
@@ -199,9 +199,9 @@ def test_exotel_telephony_and_barge_in():
     xml_content = res_exotel_in.text
     assert "Response" in xml_content, "Exotel response must be XML"
     assert 'bargin="true"' in xml_content, "Exotel response must enable barge-in so user speech interrupts agent"
-    assert "Vinod" in xml_content, "Recognized patient name in Exotel greeting"
-    assert "Riya" in xml_content, "Riya must greet caller in Exotel call"
-    print("[PASS] Exotel Inbound Webhook with Caller ID, Riya persona & Barge-In verified!")
+    assert "Rohan" in xml_content, "Recognized patient name in Exotel greeting"
+    assert "Vinod" in xml_content, "Vinod must greet caller in Exotel call"
+    print("[PASS] Exotel Inbound Webhook with Caller ID, Vinod persona & Barge-In verified!")
 
     # 2. Test Exotel Turn Webhook
     res_exotel_turn = client.post(
@@ -219,8 +219,8 @@ def test_exotel_telephony_and_barge_in():
     )
     assert res_twilio_in.status_code == 200
     assert 'bargeIn="true"' in res_twilio_in.text, "Twilio must enable bargeIn=true to stop agent speaking"
-    assert "Riya" in res_twilio_in.text
-    print("[PASS] Twilio Inbound Webhook with Riya & bargeIn='true' verified!")
+    assert "Vinod" in res_twilio_in.text
+    print("[PASS] Twilio Inbound Webhook with Vinod & bargeIn='true' verified!")
 
 def test_ambiguity_detection_and_human_sensitivity():
     print("\n--- [TEST 7] Testing Ambiguity Detection, Direct Human Transfer & Human Empathy ---")
@@ -230,7 +230,7 @@ def test_ambiguity_detection_and_human_sensitivity():
     query_ambig = "My doctor told me something different and I am confused about taking insulin, is that safe for me?"
     turn_ambig = agent.process_turn(query_ambig)
     print(f"User: {query_ambig}")
-    print(f"Agent (Riya): {turn_ambig['speech']}")
+    print(f"Agent (Vinod): {turn_ambig['speech']}")
     assert turn_ambig["intent"] == "human_handover_ambiguity", "Must identify clinical ambiguity"
     assert turn_ambig["tool_executed"] == "transfer_to_real_human_assistant", "Must execute direct transfer to human assistant"
     assert "unambiguous" in turn_ambig["speech"].lower() or "medical nuances" in turn_ambig["speech"].lower()
@@ -241,7 +241,7 @@ def test_ambiguity_detection_and_human_sensitivity():
     query_distress = "I am terrified and feeling very scared about my biopsy results, please help me"
     turn_distress = agent.process_turn(query_distress)
     print(f"\nUser: {query_distress}")
-    print(f"Agent (Riya): {turn_distress['speech']}")
+    print(f"Agent (Vinod): {turn_distress['speech']}")
     assert "anxious" in turn_distress["speech"].lower() or "safe hands" in turn_distress["speech"].lower(), "Agent must demonstrate human empathy"
     print("[PASS] Human interaction sensitivity (Empathy) successfully detected and expressed!")
 
