@@ -44,5 +44,66 @@ def test_natural_executive_dialogue():
 
     print("\n[SUCCESS] Natural Executive Dialogue matches all requirements with zero chatbot fluff!")
 
+
+def test_example_real_conversation_funnel():
+    print("\n--- Testing Exact Prompt Example: Real Conversation Funnel ---")
+    agent = DiagnosticVoiceAgent(caller_phone="+91 91234 56789", call_sid="TEST-FUNNEL-001")
+
+    # Opening
+    greeting = agent.get_initial_greeting()
+    print(f"Agent: '{greeting['speech']}'")
+    assert "Hi, I'm your Lab Assistant Vinod. How can I help?" in greeting["speech"] or "Hi! I'm your Lab Assistant" in greeting["speech"]
+    assert "How can I help?" in greeting["speech"]
+
+
+    # Turn 1: User: "I want a blood test."
+    print("\nUser:  'I want a blood test.'")
+    t1 = agent.process_turn("I want a blood test.")
+    print(f"Agent: '{t1['speech']}'")
+    assert t1["speech"] == "Sure. Which test are you looking for?"
+    assert t1["intent"] == "ask_test_name"
+
+    # Turn 2: User: "CBC."
+    print("\nUser:  'CBC.'")
+    t2 = agent.process_turn("CBC.")
+    print(f"Agent: '{t2['speech']}'")
+    assert t2["speech"] == "Sure. Are you planning to visit the lab or would you like someone to collect the sample from home?"
+    assert t2["intent"] == "ask_sampling_mode"
+
+    # Turn 3: User: "Home."
+    print("\nUser:  'Home.'")
+    t3 = agent.process_turn("Home.")
+    print(f"Agent: '{t3['speech']}'")
+    assert t3["speech"] == "Okay. What day would you like?"
+    assert t3["intent"] == "ask_appointment_date"
+
+    # Turn 4: User: "Tomorrow."
+    print("\nUser:  'Tomorrow.'")
+    t4 = agent.process_turn("Tomorrow.")
+    print(f"Agent: '{t4['speech']}'")
+    assert t4["speech"] == "Morning or afternoon?"
+    assert t4["intent"] == "ask_time_preference"
+
+    # Turn 5: User: "Morning." -> Now the agent calls check_availability()
+    print("\nUser:  'Morning.'")
+    t5 = agent.process_turn("Morning.")
+    print(f"Agent: '{t5['speech']}'")
+    assert t5["tool_executed"] == "check_availability"
+    assert "10 to 12 AM for ₹450" in t5["speech"]
+    assert "Does that work for you?" in t5["speech"]
+
+    # Turn 6: User: "Yes" (or "10 to 12 AM please") -> Agent calls book_appointment()
+    print("\nUser:  'Yes'")
+    t6 = agent.process_turn("Yes")
+    print(f"Agent: '{t6['speech']}'")
+    assert t6["tool_executed"] == "book_appointment"
+    assert "Done! Booked your CBC for tomorrow, 10:00 AM - 12:00 PM at ₹450." in t6["speech"]
+    assert "WhatsApp" in t6["speech"] and "Gmail" in t6["speech"]
+
+    print("\n[SUCCESS] Exact Real Conversation Funnel passed with 100% precision!")
+
+
 if __name__ == "__main__":
     test_natural_executive_dialogue()
+    test_example_real_conversation_funnel()
+

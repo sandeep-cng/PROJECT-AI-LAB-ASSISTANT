@@ -52,6 +52,7 @@ class ShortTermMemory:
         self.active_entities: Dict[str, Any] = {}
         self.last_citations: List[Dict[str, Any]] = []
         self.ambiguity_detected: bool = False
+        self.conversation_step: Optional[str] = None
 
     def add_turn(self, role: str, content: str):
         self.turns.append({"role": role, "content": content})
@@ -64,6 +65,8 @@ class ShortTermMemory:
 
     def clear_pending(self):
         self.pending_availability = None
+        self.conversation_step = None
+        self.active_entities = {}
 
 
 class ContextManager:
@@ -499,10 +502,13 @@ class ConversationEngine:
                 "intent": "human_handover"
             }
 
-        # 4. Action Required: Slot Confirmation (User confirming 10-12 AM or 12-2 PM)
+        # 4. Action Required: Slot Confirmation (User confirming 10-12 AM or 12-2 PM, or "yes")
         if self.memory.pending_availability:
-            if any(term in user_lower for term in ["10 to 12", "10-12", "10–12", "10 am", "10:00", "450", "₹450", "first", "first one", "slot 1", "morning",
-                                                  "12 to 2", "12-2", "12–2", "12 pm", "2 pm", "500", "₹500", "second", "second one", "slot 2", "noon", "afternoon"]):
+            if any(term in user_lower for term in [
+                "10 to 12", "10-12", "10–12", "10 am", "10:00", "450", "₹450", "first", "first one", "slot 1",
+                "12 to 2", "12-2", "12–2", "12 pm", "2 pm", "500", "₹500", "second", "second one", "slot 2", "noon",
+                "yes", "sure", "that works", "works for me", "okay", "confirm", "go ahead", "sounds good", "perfect", "please do", "book it"
+            ]):
                 return {
                     "category": "Action required",
                     "route": "AGENT_TOOLS",
@@ -529,7 +535,99 @@ class ConversationEngine:
                 "intent": "check_policy"
             }
 
-        # 6. Action Required: Check Availability ("I need a CBC", "I need a CBC tomorrow", "User wants CBC tomorrow")
+        # 6. Guided Step-by-Step Booking Funnel
+        # Check active conversation step
+        if self.memory.conversation_step == "AWAITING_TIME_OF_DAY":
+            if any(w in user_lower for w in ["morning", "afternoon", "evening", "10", "12", "am", "pm", "any", "either"]):
+                return {
+                    "category": "Action required",
+                    "route": "AGENT_TOOLS",
+                    "component": "Availability",
+                    "tool": "check_availability",
+                    "intent": "check_availability"
+                }
+
+        if self.memory.conversation_step == "AWAITING_DATE":
+            if any(w in user_lower for w in ["tomorrow", "today", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "next"]):
+                if any(w in user_lower for w in ["morning", "afternoon", "evening"]):
+                    return {
+                        "category": "Action required",
+                        "route": "AGENT_TOOLS",
+                        "component": "Availability",
+                        "tool": "check_availability",
+                        "intent": "check_availability"
+                    }
+                return {
+                    "category": "Action required",
+                    "route": "CONVERSATION_FUNNEL",
+                    "component": "Booking",
+                    "tool": "funnel_ask_time",
+                    "intent": "ask_time_preference"
+                }
+
+        if self.memory.conversation_step == "AWAITING_SAMPLING_MODE":
+            if any(w in user_lower for w in ["home", "doorstep", "collect", "visit", "visiting", "lab", "clinic", "in-situ", "insitu"]):
+                if any(w in user_lower for w in ["tomorrow", "today"]):
+                    if any(w in user_lower for w in ["morning", "afternoon", "evening"]):
+                        return {
+                            "category": "Action required",
+                            "route": "AGENT_TOOLS",
+                            "component": "Availability",
+                            "tool": "check_availability",
+                            "intent": "check_availability"
+                        }
+                    return {
+                        "category": "Action required",
+                        "route": "CONVERSATION_FUNNEL",
+                        "component": "Booking",
+                        "tool": "funnel_ask_time",
+                        "intent": "ask_time_preference"
+                    }
+                return {
+                    "category": "Action required",
+                    "route": "CONVERSATION_FUNNEL",
+                    "component": "Booking",
+                    "tool": "funnel_ask_date",
+                    "intent": "ask_appointment_date"
+                }
+
+        if self.memory.conversation_step == "AWAITING_TEST_NAME":
+            return {
+                "category": "Action required",
+                "route": "CONVERSATION_FUNNEL",
+                "component": "Booking",
+                "tool": "funnel_ask_mode",
+                "intent": "ask_sampling_mode"
+            }
+
+        # Initial generic inquiry: "I want a blood test." (Don't immediately dump 10 options!)
+        is_generic_blood_test = any(phrase in user_lower for phrase in [
+            "want a blood test", "need a blood test", "want a test", "need a test",
+            "get a blood test", "book a blood test", "take a blood test", "blood test",
+            "do a blood test", "like a blood test", "schedule a blood test"
+        ])
+        has_specific_test = any(t in user_lower for t in ["cbc", "complete blood count", "lipid", "cholesterol", "sugar", "glucose", "thyroid", "tsh", "liver", "lft", "kidney", "kft", "hba1c", "creatinine", "package", "wellness"])
+        if is_generic_blood_test and not has_specific_test:
+            return {
+                "category": "Action required",
+                "route": "CONVERSATION_FUNNEL",
+                "component": "Booking",
+                "tool": "funnel_ask_test",
+                "intent": "ask_test_name"
+            }
+
+        # Standalone short test response (e.g. "CBC." or "Complete Blood Count") without date and without mode
+        clean_user = user_lower.strip().rstrip(".!?")
+        if clean_user in ["cbc", "complete blood count", "cbc test", "lipid profile", "lipid", "thyroid", "blood sugar"]:
+            return {
+                "category": "Action required",
+                "route": "CONVERSATION_FUNNEL",
+                "component": "Booking",
+                "tool": "funnel_ask_mode",
+                "intent": "ask_sampling_mode"
+            }
+
+        # 7. Action Required: Check Availability ("I need a CBC", "I need a CBC tomorrow", "User wants CBC tomorrow")
         is_cbc_query = "cbc" in user_lower or "complete blood count" in user_lower
         is_avail = any(q in user_lower for q in [
             "wants cbc", "want cbc", "need cbc", "available", "availability", "check availability",
@@ -668,21 +766,20 @@ class DiagnosticVoiceAgent:
         if self.patient:
             if self.context_mgr.recent_report:
                 greeting = (
-                    f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
+                    f"Hi, I'm your Lab Assistant {self.agent_name}. "
                     f"Hi {self.patient.full_name}, good to speak with you again. "
                     f"Are you calling about your recent reports, or looking to book a test?"
                 )
             else:
                 greeting = (
-                    f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
-                    f"Hi {self.patient.full_name}, good to speak with you again. "
-                    f"How can I help you today? Looking to book a test or need test info?"
+                    f"Hi, I'm your Lab Assistant {self.agent_name}. "
+                    f"Hi {self.patient.full_name}, good to speak with you again! "
+                    f"How can I help?"
                 )
             caller_name = self.patient.full_name
         else:
             greeting = (
-                f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
-                f"How can I help you today? Looking to book a test or need test info?"
+                f"Hi, I'm your Lab Assistant {self.agent_name}. How can I help?"
             )
             caller_name = "New Caller"
 
@@ -797,22 +894,58 @@ class DiagnosticVoiceAgent:
                 )
 
             # ------------------------------------------------------------------
-            # 3. ACTION REQUIRED: AGENT TOOLS BRANCH
+            # 3. ACTION REQUIRED: AGENT TOOLS & GUIDED FUNNEL BRANCH
             # ------------------------------------------------------------------
             if category == "Action required":
                 self.engine.state = ConversationState.ROUTING_ACTION_TOOLS
                 pipeline_trace["state"] = self.engine.state.value
 
-                # A. Slot Selection Confirmation (e.g. user selected "10 to 12 AM please")
+                # 0. Guided Conversation Funnel Steps (Don't immediately dump 10 options!)
+                if intent == "ask_test_name":
+                    self.engine.memory.conversation_step = "AWAITING_TEST_NAME"
+                    self.detected_intent = "ask_test_name"
+                    response = f"{empathy_prefix}Sure. Which test are you looking for?"
+                    return self._finalize_turn(response, intent="ask_test_name", tool_executed="funnel_ask_test", extra={"pipeline_trace": pipeline_trace})
+
+                if intent == "ask_sampling_mode":
+                    test_code = "CBC" if ("cbc" in user_lower or "complete blood count" in user_lower) else ("LIPID" if "lipid" in user_lower else "CBC")
+                    self.engine.memory.active_entities["test_code"] = test_code
+                    self.engine.memory.conversation_step = "AWAITING_SAMPLING_MODE"
+                    self.detected_intent = "ask_sampling_mode"
+                    response = f"{empathy_prefix}Sure. Are you planning to visit the lab or would you like someone to collect the sample from home?"
+                    return self._finalize_turn(response, intent="ask_sampling_mode", tool_executed="funnel_ask_mode", extra={"pipeline_trace": pipeline_trace})
+
+                if intent == "ask_appointment_date":
+                    mode = "home_collection" if any(w in user_lower for w in ["home", "doorstep", "collect"]) else "insitu_lab_visit"
+                    self.engine.memory.active_entities["sampling_mode"] = mode
+                    self.engine.memory.conversation_step = "AWAITING_DATE"
+                    self.detected_intent = "ask_appointment_date"
+                    response = f"{empathy_prefix}Okay. What day would you like?"
+                    return self._finalize_turn(response, intent="ask_appointment_date", tool_executed="funnel_ask_date", extra={"pipeline_trace": pipeline_trace})
+
+                if intent == "ask_time_preference":
+                    target_date = "tomorrow" if "tomorrow" in user_lower else ("today" if "today" in user_lower else "tomorrow")
+                    self.engine.memory.active_entities["target_date"] = target_date
+                    self.engine.memory.conversation_step = "AWAITING_TIME_OF_DAY"
+                    self.detected_intent = "ask_time_preference"
+                    response = f"{empathy_prefix}Morning or afternoon?"
+                    return self._finalize_turn(response, intent="ask_time_preference", tool_executed="funnel_ask_time", extra={"pipeline_trace": pipeline_trace})
+
+                # A. Slot Selection Confirmation (e.g. user selected "10 to 12 AM please" or "yes")
                 if component == "Booking" and intent == "confirm_slot_selection" and self.engine.memory.pending_availability:
                     avail_data = self.engine.memory.pending_availability
                     slots = avail_data.get("slots", [])
                     chosen_slot = None
 
+                    time_pref = self.engine.memory.active_entities.get("time_preference")
                     if any(term in user_lower for term in ["10 to 12", "10-12", "10–12", "10 am", "10:00", "450", "₹450", "first", "first one", "slot 1", "morning"]):
                         chosen_slot = slots[0] if len(slots) > 0 else None
                     elif any(term in user_lower for term in ["12 to 2", "12-2", "12–2", "12 pm", "2 pm", "500", "₹500", "second", "second one", "slot 2", "noon", "afternoon"]):
                         chosen_slot = slots[1] if len(slots) > 1 else None
+                    elif any(term in user_lower for term in ["yes", "sure", "that works", "works for me", "okay", "confirm", "go ahead", "sounds good", "perfect", "please do", "book it"]):
+                        chosen_slot = slots[1] if time_pref == "afternoon" else slots[0]
+                    else:
+                        chosen_slot = slots[0] if len(slots) > 0 else None
 
                     if chosen_slot:
                         test_name = avail_data.get("test_name", "Complete Blood Count (CBC)")
@@ -898,28 +1031,48 @@ class DiagnosticVoiceAgent:
                         extra={"pipeline_trace": pipeline_trace}
                     )
 
-                # B. Availability Check ("User wants CBC tomorrow" / "I need a CBC tomorrow" / "I need a CBC")
+                # B. Availability Check ("User wants CBC tomorrow" / "I need a CBC tomorrow" / "I need a CBC" / Guided Funnel)
                 if component == "Availability":
-                    test_code_to_check = "CBC" if ("cbc" in user_lower or "complete blood count" in user_lower) else ("LIPID" if "lipid" in user_lower else "CBC")
-                    avail_data = AgentTools.check_availability(test_query=test_code_to_check, target_date="tomorrow", db=db)
+                    if "morning" in user_lower:
+                        self.engine.memory.active_entities["time_preference"] = "morning"
+                    elif "afternoon" in user_lower:
+                        self.engine.memory.active_entities["time_preference"] = "afternoon"
+
+                    test_code_to_check = self.engine.memory.active_entities.get("test_code") or (
+                        "CBC" if ("cbc" in user_lower or "complete blood count" in user_lower) else ("LIPID" if "lipid" in user_lower else "CBC")
+                    )
+                    target_date = self.engine.memory.active_entities.get("target_date") or ("tomorrow" if "tomorrow" in user_lower else "tomorrow")
+                    appt_type = self.engine.memory.active_entities.get("sampling_mode") or (
+                        "insitu_lab_visit" if any(w in user_lower for w in ["visit", "visiting", "lab", "clinic"]) else "home_collection"
+                    )
+
+                    avail_data = AgentTools.check_availability(test_query=test_code_to_check, target_date=target_date, appointment_type=appt_type, db=db)
                     self.pending_availability = avail_data
                     self.engine.memory.set_pending_availability(avail_data)
                     self.detected_intent = "check_availability"
                     self.engine.state = ConversationState.SLOT_SELECTION_PENDING
+                    self.engine.memory.conversation_step = "SLOT_SELECTION_PENDING"
                     pipeline_trace["state"] = self.engine.state.value
 
                     slot1 = avail_data["slots"][0]
                     slot2 = avail_data["slots"][1]
                     self.actions_taken.append(
-                        f"Executed check_availability('{test_code_to_check}', 'tomorrow') -> Database returned: {slot1['slot_label']} ({slot1['price_formatted']}), {slot2['slot_label']} ({slot2['price_formatted']})"
+                        f"Executed check_availability('{test_code_to_check}', '{target_date}') -> Database returned: {slot1['slot_label']} ({slot1['price_formatted']}), {slot2['slot_label']} ({slot2['price_formatted']})"
                     )
 
-                    test_label = "CBC" if test_code_to_check == "CBC" else avail_data["test_name"]
-                    response = (
-                        f"{empathy_prefix}Sure. {test_label}, right? "
-                        f"For tomorrow, we have two slots: 10 to 12 AM for ₹450, or 12 to 2 PM for ₹500. "
-                        f"Are you looking for home collection or would you prefer visiting the lab?"
-                    )
+                    time_pref = self.engine.memory.active_entities.get("time_preference")
+                    if time_pref == "morning":
+                        response = f"{empathy_prefix}For {avail_data['date_label']} morning, we have a slot from 10 to 12 AM for ₹450. Does that work for you?"
+                    elif time_pref == "afternoon":
+                        response = f"{empathy_prefix}For {avail_data['date_label']} afternoon, we have a slot from 12 to 2 PM for ₹500. Does that work for you?"
+                    else:
+                        test_label = "CBC" if test_code_to_check == "CBC" else avail_data["test_name"]
+                        response = (
+                            f"{empathy_prefix}Sure. {test_label}, right? "
+                            f"For tomorrow, we have two slots: 10 to 12 AM for ₹450, or 12 to 2 PM for ₹500. "
+                            f"Are you looking for home collection or would you prefer visiting the lab?"
+                        )
+
                     return self._finalize_turn(
                         response,
                         intent="check_availability_slots",
