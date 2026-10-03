@@ -77,11 +77,11 @@ function stopAgentSpeaking(reason = 'user_speaking') {
 
   // 2. Update UI Indicators
   if (modalAudioState) {
-    modalAudioState.textContent = 'Agent Paused (Barge-In Active)';
+    modalAudioState.textContent = 'Vinod Paused (Barge-In Active) • Listening to you...';
     modalAudioState.style.color = '#f59e0b';
   }
   if (modalActionText) {
-    modalActionText.textContent = `⚡ Agent interrupted by you (${reason}) — listening to your request...`;
+    modalActionText.textContent = `⚡ Vinod stopped speaking (${reason}) — Listening to your complete query...`;
     modalActionText.style.color = '#f59e0b';
   }
 
@@ -308,10 +308,10 @@ function startCallSession(preferredTest = null) {
       const msg = JSON.parse(event.data);
       if (msg.type === 'call_connected') {
         currentCallSid = msg.call_sid;
-        appendSpeechBubble('Vinod (Care Specialist)', msg.speech, 'agent');
+        appendSpeechBubble('Vinod (Virtual Lab Assistant)', msg.speech, 'agent');
         speakAudio(msg.speech);
       } else if (msg.type === 'agent_response') {
-        appendSpeechBubble('Vinod (Care Specialist)', msg.speech, 'agent');
+        appendSpeechBubble('Vinod (Virtual Lab Assistant)', msg.speech, 'agent');
         speakAudio(msg.speech);
 
         if (msg.intent === 'human_handover_ambiguity') {
@@ -361,7 +361,7 @@ async function startRestCallSession(phone, preferredTest = null) {
     if (res.ok) {
       const data = await res.json();
       currentCallSid = data.call_sid;
-      appendSpeechBubble('Riya (Care Specialist)', data.speech, 'agent');
+      appendSpeechBubble('Vinod (Virtual Lab Assistant)', data.speech, 'agent');
       speakAudio(data.speech);
 
       if (preferredTest) {
@@ -431,7 +431,7 @@ async function sendUserSpeechTurn() {
       });
       if (res.ok) {
         const data = await res.json();
-        appendSpeechBubble('Vinod (Care Specialist)', data.speech, 'agent');
+        appendSpeechBubble('Vinod (Virtual Lab Assistant)', data.speech, 'agent');
         speakAudio(data.speech);
 
         if (data.intent === 'human_handover_ambiguity') {
@@ -492,28 +492,74 @@ function appendConfirmationBadges(extra) {
   modalTranscriptFeed.scrollTop = modalTranscriptFeed.scrollHeight;
 }
 
-// --- Text-to-Speech (Human-Like Spoken Feedback with Active State Tracking) ---
+// --- Text-to-Speech (Indian Male Virtual Lab Assistant: Vinod) ---
+function pickIndianMaleVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return null;
+
+  // 1. Priority: Explicit Indian English Male Voice
+  const inMale = voices.find(v => 
+    (v.lang === 'en-IN' || v.lang.startsWith('en-IN') || v.name.includes('India')) &&
+    (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('ravi') || 
+     v.name.toLowerCase().includes('prabhat') || v.name.toLowerCase().includes('madhav') || 
+     v.name.toLowerCase().includes('mohan') || v.name.toLowerCase().includes('hemant'))
+  );
+  if (inMale) return inMale;
+
+  // 2. Any Indian English voice
+  const inAny = voices.find(v => v.lang === 'en-IN' || v.lang.startsWith('en-IN') || v.name.includes('India'));
+  if (inAny) return inAny;
+
+  // 3. High quality natural male English voice
+  const maleEn = voices.find(v => v.lang.startsWith('en') && 
+    (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('david') || 
+     v.name.toLowerCase().includes('george') || v.name.toLowerCase().includes('guy') || 
+     v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('google uk english male'))
+  );
+  if (maleEn) return maleEn;
+
+  // 4. General English voice fallback
+  return voices.find(v => v.lang.startsWith('en')) || voices[0];
+}
+
+// Ensure voices are loaded
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    pickIndianMaleVoice();
+  };
+}
+
 function speakAudio(text) {
   if (!isVoiceOutputEnabled || !('speechSynthesis' in window)) return;
 
+  // Immediately cancel any previous audio
   window.speechSynthesis.cancel();
+
   const cleanSpeech = text.replace(/[*#_\[\]\(\)]/g, '').replace(/https?:\/\/\S+/g, '');
   const utterance = new SpeechSynthesisUtterance(cleanSpeech);
-  utterance.rate = 1.0;
-  utterance.pitch = 1.04;
+
+  // Calibrate acoustic parameters for Indian Male lab assistant (steady, warm, reassuring)
+  utterance.rate = 0.98;
+  utterance.pitch = 0.92;
+
+  const chosenVoice = pickIndianMaleVoice();
+  if (chosenVoice) {
+    utterance.voice = chosenVoice;
+  }
 
   utterance.onstart = () => {
     isAgentSpeaking = true;
     if (modalAudioState) {
-      modalAudioState.textContent = 'Riya is Speaking (Speak anytime to interrupt)';
+      modalAudioState.textContent = 'Vinod is Speaking • Speak anytime to interrupt';
       modalAudioState.style.color = '#38bdf8';
     }
   };
 
   utterance.onend = () => {
     isAgentSpeaking = false;
-    if (modalAudioState) {
-      modalAudioState.textContent = 'Voice Audio Active (Listening)';
+    if (modalAudioState && isCallActive) {
+      modalAudioState.textContent = 'Voice Audio Active (Listening to you)';
       modalAudioState.style.color = '#34d399';
     }
   };
@@ -522,14 +568,13 @@ function speakAudio(text) {
     isAgentSpeaking = false;
   };
 
-  const voices = window.speechSynthesis.getVoices();
-  const naturalVoice = voices.find(v => v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Jenny') || v.lang.startsWith('en'));
-  if (naturalVoice) utterance.voice = naturalVoice;
-
   window.speechSynthesis.speak(utterance);
 }
 
-// --- Speech-to-Text (Microphone with Continuous Barge-In) ---
+// --- Speech-to-Text (Microphone with Continuous Barge-In & Complete Speech Capture) ---
+let speechDebounceTimer = null;
+let accumulatedUserSpeech = '';
+
 function initSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -540,45 +585,68 @@ function initSpeechRecognition() {
   recognition = new SpeechRecognition();
   recognition.continuous = true;       // Keep listening during entire call
   recognition.interimResults = true;    // Instant phoneme / speech detection
-  recognition.lang = 'en-US';
+  recognition.lang = 'en-IN';          // Indian English acoustic model
 
   recognition.onstart = () => {
     isRecording = true;
     btnModalMic.classList.add('recording');
   };
 
-  // Instant speech start callback -> HALTS AGENT SPEECH IMMEDIATELY!
+  // VAD: Instant speech start detected -> IMMEDIATELY STOP TTS!
   recognition.onspeechstart = () => {
-    stopAgentSpeaking('speech_start_detected');
+    stopAgentSpeaking('speech_start_vad');
+    if (modalAudioState) {
+      modalAudioState.textContent = '🎤 Voice detected — Listening to you...';
+      modalAudioState.style.color = '#34d399';
+    }
   };
 
   recognition.onsoundstart = () => {
-    stopAgentSpeaking('sound_start_detected');
+    stopAgentSpeaking('sound_start_vad');
   };
 
   recognition.onresult = (event) => {
-    // If agent is speaking, halt it the instant any voice word is recognized
+    // 1. If agent is speaking, IMMEDIATELY STOP TTS with 0 latency
     stopAgentSpeaking('speech_in_progress');
 
     let interimTranscript = '';
-    let finalTranscript = '';
+    let finalChunk = '';
 
     for (let i = event.resultIndex; i < event.results.length; ++i) {
       if (event.results[i].isFinal) {
-        finalTranscript += event.results[i][0].transcript;
+        finalChunk += event.results[i][0].transcript;
       } else {
         interimTranscript += event.results[i][0].transcript;
       }
     }
 
-    if (interimTranscript) {
-      modalUserText.value = interimTranscript;
+    if (finalChunk.trim()) {
+      accumulatedUserSpeech = (accumulatedUserSpeech + ' ' + finalChunk).trim();
     }
 
-    if (finalTranscript.trim()) {
-      modalUserText.value = finalTranscript.trim();
-      sendUserSpeechTurn();
+    const currentDisplay = (accumulatedUserSpeech + ' ' + interimTranscript).trim();
+    if (currentDisplay) {
+      modalUserText.value = currentDisplay;
+      if (modalActionText) {
+        modalActionText.textContent = `🎤 Listening to your complete query...`;
+        modalActionText.style.color = '#34d399';
+      }
     }
+
+    // 2. Capture user's complete speech using intelligent silence debouncer (950ms)
+    clearTimeout(speechDebounceTimer);
+    speechDebounceTimer = setTimeout(() => {
+      const completeQuery = (accumulatedUserSpeech || modalUserText.value || '').trim();
+      if (completeQuery && completeQuery.length > 1) {
+        accumulatedUserSpeech = '';
+        modalUserText.value = completeQuery;
+        if (modalAudioState) {
+          modalAudioState.textContent = 'Processing speech with AI...';
+          modalAudioState.style.color = '#38bdf8';
+        }
+        sendUserSpeechTurn();
+      }
+    }, 950);
   };
 
   recognition.onerror = (event) => {
@@ -590,6 +658,7 @@ function initSpeechRecognition() {
   recognition.onend = () => {
     isRecording = false;
     btnModalMic.classList.remove('recording');
+
     // If call is still active, automatically restart recognition so user never misses a turn
     if (isCallActive) {
       try {

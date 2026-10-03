@@ -41,16 +41,15 @@ def test_voice_agent_caller_id_and_tools():
     print(f"Greeting Speech: {greeting['speech'][:140]}...")
     assert greeting["is_returning_patient"] is True, "Should identify Rohan Mehta as returning"
     assert "Rohan" in greeting["speech"], "Greeting should mention patient name"
-    assert "Vinod" in greeting["speech"], "Greeting must introduce coordinator as Vinod"
+    assert "Hi, I'm your Lab Assistant Vinod" in greeting["speech"], "Greeting must introduce agent as 'Hi, I'm your Lab Assistant Vinod'"
     assert greeting.get("coordinator_name") == "Vinod", "Coordinator name must be Vinod"
     print("[PASS] Caller ID & Vinod Personalized Greeting passed!")
 
     # Test new caller greeting with Vinod
     new_agent = DiagnosticVoiceAgent(caller_phone="+1 (555) 000-9999", call_sid="TEST-CALL-NEW")
     new_greeting = new_agent.get_initial_greeting()
-    assert "My name is Vinod" in new_greeting["speech"], "New caller must be greeted by Vinod"
-    assert "virtual" not in new_greeting["speech"].lower(), "No virtual or artificial tags"
-    print("[PASS] New Caller Vinod greeting verified without virtual tags!")
+    assert "Hi, I'm your Lab Assistant Vinod" in new_greeting["speech"], "New caller must be greeted with 'Hi, I'm your Lab Assistant Vinod'"
+    print("[PASS] New Caller Vinod greeting verified with 'Hi, I\'m your Lab Assistant Vinod'!")
 
     # Test report query
     turn1 = agent.process_turn("Can you check my recent cholesterol results?")

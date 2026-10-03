@@ -19,7 +19,7 @@ def normalize_phone(phone: str) -> str:
 
 class DiagnosticVoiceAgent:
     """
-    Dedicated Human-Like Care Coordinator (Riya) for Apex Family Diagnostic Lab.
+    Dedicated Indian Male Virtual Lab Assistant (Vinod) for Apex Family Diagnostic Lab.
     Attends inbound telephone calls from personal phone numbers, recognizes returning
     patients, checks preparation/fasting SOPs using RAG, schedules doorstep sampling
     or in-situ clinic visits with automated WhatsApp & Gmail confirmations, detects
@@ -54,7 +54,8 @@ class DiagnosticVoiceAgent:
 
     def get_initial_greeting(self) -> Dict[str, Any]:
         """
-        Generates immediate, warm, compassionate greeting upon phone pickup from Riya.
+        Generates immediate, warm, compassionate greeting upon phone pickup from Vinod.
+        Starts with: "Hi, I'm your Lab Assistant Vinod..."
         """
         if self.patient:
             db: Session = SessionLocal()
@@ -66,23 +67,22 @@ class DiagnosticVoiceAgent:
 
             if recent_report:
                 greeting = (
-                    f"Hello {self.patient.full_name}, thank you for calling Apex Family Diagnostic Lab! "
-                    f"My name is {self.agent_name}, your care coordinator. I see you recently had tests with us. "
-                    f"Are you calling to review your recent results, or would you like to schedule a new test today? "
-                    f"We offer both doorstep home sample collection and in-situ clinic appointments."
+                    f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
+                    f"Hello {self.patient.full_name}, it's wonderful to speak with you again. I see your recent diagnostic reports on file. "
+                    f"Are you calling to review your results, or would you like to schedule a home sample collection or clinic test today?"
                 )
             else:
                 greeting = (
-                    f"Hello {self.patient.full_name}, thank you for calling Apex Family Diagnostic Lab! "
-                    f"My name is {self.agent_name}, your care coordinator. It is wonderful to hear from you again. "
-                    f"How can I assist you today? Would you like to book a doorstep sample draw or an in-situ laboratory clinic visit?"
+                    f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
+                    f"Hello {self.patient.full_name}, it's wonderful to speak with you again. "
+                    f"How can I assist you today? I can help you schedule a doorstep home collection or book an in-clinic lab appointment."
                 )
             caller_name = self.patient.full_name
         else:
             greeting = (
-                f"Thank you for calling Apex Family Diagnostic Lab! My name is {self.agent_name}, your dedicated care coordinator. "
-                f"I can help you schedule a doorstep home collection, reserve an in-situ lab clinic appointment, "
-                f"or explain pre-test fasting guidelines. How may I assist you today?"
+                f"Hi, I'm your Lab Assistant {self.agent_name} from Apex Family Diagnostic Lab! "
+                f"How may I assist you today? I can help you schedule a doorstep home sample collection, "
+                f"book an in-clinic lab appointment, or explain pre-test fasting instructions."
             )
             caller_name = "New Caller"
 
@@ -335,7 +335,7 @@ class DiagnosticVoiceAgent:
                     pickup_address=address if appointment_type == "home_collection" else "Apex Diagnostic Center (5580 E. 2nd St, Suite 206)",
                     status="booked",
                     tests_requested=test_names,
-                    notes=f"Booked via Care Coordinator Riya for {booking_label}."
+                    notes=f"Booked via Virtual Lab Assistant {self.agent_name} for {booking_label}."
                 )
                 db.add(appt)
                 db.commit()
@@ -428,7 +428,27 @@ class DiagnosticVoiceAgent:
                     )
                     return self._finalize_turn(response, intent="search_catalog_test", tool_executed="search_test_catalog")
 
-            # 8. Default / Fallback Support
+            # 8. Human Conversational Inquiries & Natural Chit-Chat
+            if any(k in user_lower for k in ["who are you", "what is your name", "what are you", "your identity"]):
+                response = (
+                    f"{empathy_prefix}I am {self.agent_name}, your dedicated Indian virtual lab assistant at Apex Family Diagnostic Lab. "
+                    "I am here to understand your healthcare needs, guide you with test preparation, and arrange hassle-free sample collections."
+                )
+                return self._finalize_turn(response, intent="bot_identity")
+
+            if any(k in user_lower for k in ["can you hear me", "are you there", "hello", "hi vinod", "hey vinod", "namaste"]):
+                response = (
+                    f"{empathy_prefix}Yes, I can hear you clearly! I am right here with you. How can I help you today with your lab tests, fasting rules, or appointments?"
+                )
+                return self._finalize_turn(response, intent="bot_acknowledgement")
+
+            if any(k in user_lower for k in ["thank you", "thanks", "helpful", "appreciate"]):
+                response = (
+                    f"{empathy_prefix}You are very welcome! It is truly my pleasure to support your health. Please let me know if you need anything else, or if you're ready to schedule your sample collection."
+                )
+                return self._finalize_turn(response, intent="bot_gratitude")
+
+            # 9. Default / Fallback Support
             self.detected_intent = "conversational_support"
             response = (
                 f"{empathy_prefix}I am here to take care of all your diagnostic requirements. "
