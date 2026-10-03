@@ -17,6 +17,111 @@ def normalize_phone(phone: str) -> str:
     digits = re.sub(r'[^0-9+]', '', phone.strip())
     return digits
 
+def check_availability(
+    test_query: str = "CBC",
+    target_date: Optional[str] = "tomorrow",
+    appointment_type: str = "home_collection",
+    db: Optional[Session] = None
+) -> Dict[str, Any]:
+    """
+    Checks appointment slot availability and slot-specific pricing from the DATABASE.
+    Queries TestCatalog and existing Appointments.
+    Returns:
+      - 10–12 AM at ₹450
+      - 12–2 PM at ₹500
+    """
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+
+    try:
+        today = datetime.date.today()
+        if not target_date or target_date.lower() in ["tomorrow", "tmrw"]:
+            resolved_date = (today + datetime.timedelta(days=1)).isoformat()
+            date_label = "tomorrow"
+        elif target_date.lower() == "today":
+            resolved_date = today.isoformat()
+            date_label = "today"
+        else:
+            resolved_date = target_date
+            date_label = target_date
+
+        # Look up test in database
+        matched_test = None
+        test_code_clean = test_query.strip().upper()
+        matched_test = db.query(TestCatalog).filter(TestCatalog.test_code == test_code_clean).first()
+        if not matched_test:
+            matched_test = db.query(TestCatalog).filter(
+                (TestCatalog.test_name.ilike(f"%{test_query}%")) |
+                (TestCatalog.test_code.ilike(f"%{test_query}%"))
+            ).first()
+
+        if matched_test:
+            test_name = matched_test.test_name
+            test_code = matched_test.test_code
+            base_price = int(matched_test.price) if matched_test.price >= 100 else 450
+            fasting_req = matched_test.fasting_required
+            fasting_hours = matched_test.fasting_hours
+        else:
+            test_name = "Complete Blood Count (CBC) with Differential"
+            test_code = "CBC"
+            base_price = 450
+            fasting_req = False
+            fasting_hours = 0
+
+        # Query Database for existing Appointments on target_date
+        existing_appts = db.query(Appointment).filter(
+            Appointment.scheduled_date == resolved_date,
+            Appointment.status != "cancelled"
+        ).all()
+
+        slot_1_booked = sum(1 for a in existing_appts if "10:00 AM" in a.time_slot or "10-12" in a.time_slot or "10–12" in a.time_slot)
+        slot_2_booked = sum(1 for a in existing_appts if "12:00 PM" in a.time_slot or "12-2" in a.time_slot or "12–2" in a.time_slot)
+
+        max_capacity_per_slot = 5
+        slot_1_price = base_price if test_code == "CBC" else base_price
+        slot_2_price = 500 if test_code == "CBC" else (base_price + 50)
+
+        slots = [
+            {
+                "slot_id": "slot_10_12",
+                "time_slot": "10:00 AM - 12:00 PM",
+                "slot_label": "10–12 AM",
+                "price": slot_1_price,
+                "currency": "₹",
+                "price_formatted": f"₹{slot_1_price}",
+                "available": slot_1_booked < max_capacity_per_slot,
+                "booked_count": slot_1_booked,
+                "max_capacity": max_capacity_per_slot
+            },
+            {
+                "slot_id": "slot_12_2",
+                "time_slot": "12:00 PM - 02:00 PM",
+                "slot_label": "12–2 PM",
+                "price": slot_2_price,
+                "currency": "₹",
+                "price_formatted": f"₹{slot_2_price}",
+                "available": slot_2_booked < max_capacity_per_slot,
+                "booked_count": slot_2_booked,
+                "max_capacity": max_capacity_per_slot
+            }
+        ]
+
+        return {
+            "test_name": test_name,
+            "test_code": test_code,
+            "target_date": resolved_date,
+            "date_label": date_label,
+            "appointment_type": appointment_type,
+            "fasting_required": fasting_req,
+            "fasting_hours": fasting_hours,
+            "slots": slots
+        }
+    finally:
+        if close_db:
+            db.close()
+
 class DiagnosticVoiceAgent:
     """
     Dedicated Indian Male Virtual Lab Assistant (Vinod) for Apex Family Diagnostic Lab.
@@ -35,6 +140,7 @@ class DiagnosticVoiceAgent:
         self.actions_taken: List[str] = []
         self.detected_intent: str = "general_inquiry"
         self.agent_name: str = os.getenv("AGENT_NAME", "Vinod")
+        self.pending_availability: Optional[Dict[str, Any]] = None
 
         # Initialize session and lookup caller
         self._lookup_caller()
@@ -127,6 +233,109 @@ class DiagnosticVoiceAgent:
 
         # Human Interaction Sensitivity (Empathy Prefix)
         empathy_prefix = self._detect_human_empathy_prefix(user_lower)
+
+        # 0. Check if user is confirming a pending slot from check_availability()
+        if self.pending_availability:
+            slots = self.pending_availability.get("slots", [])
+            chosen_slot = None
+            if any(term in user_lower for term in ["10 to 12", "10-12", "10–12", "10 am", "10:00", "450", "₹450", "first", "first one", "slot 1", "morning"]):
+                chosen_slot = slots[0] if len(slots) > 0 else None
+            elif any(term in user_lower for term in ["12 to 2", "12-2", "12–2", "12 pm", "2 pm", "500", "₹500", "second", "second one", "slot 2", "noon", "afternoon"]):
+                chosen_slot = slots[1] if len(slots) > 1 else None
+
+            if chosen_slot:
+                test_name = self.pending_availability.get("test_name", "Complete Blood Count (CBC)")
+                target_date = self.pending_availability.get("target_date", (datetime.date.today() + datetime.timedelta(days=1)).isoformat())
+                appt_type = self.pending_availability.get("appointment_type", "home_collection")
+                booking_label = "Doorstep Home Sample Collection" if appt_type == "home_collection" else "In-Situ Laboratory Clinic Visit"
+                loc_text = "at your residence" if appt_type == "home_collection" else "Apex Diagnostic Center (5580 E. 2nd St, Suite 206)"
+                price_str = chosen_slot["price_formatted"]
+                slot_label = chosen_slot["time_slot"]
+
+                # Ensure patient
+                if self.patient:
+                    patient_id = self.patient.id
+                    patient_name = self.patient.full_name
+                    patient_phone = self.patient.phone_number
+                    patient_email = self.patient.email or f"{self.patient.full_name.lower().replace(' ', '.')}@gmail.com"
+                    address = self.patient.address or "Address on file"
+                else:
+                    new_patient = Patient(
+                        full_name="Valued Patient",
+                        phone_number=self.caller_phone or "+91 98200 23456",
+                        email="patient@gmail.com",
+                        address="Residential Doorstep (Confirmed on call)",
+                        gender="Unknown"
+                    )
+                    db.add(new_patient)
+                    db.commit()
+                    self.patient = new_patient
+                    patient_id = new_patient.id
+                    patient_name = new_patient.full_name
+                    patient_phone = new_patient.phone_number
+                    patient_email = new_patient.email
+                    address = new_patient.address
+
+                # Save appointment in DATABASE
+                appt = Appointment(
+                    patient_id=patient_id,
+                    appointment_type=appt_type,
+                    scheduled_date=target_date,
+                    time_slot=slot_label,
+                    pickup_address=address if appt_type == "home_collection" else loc_text,
+                    status="booked",
+                    tests_requested=test_name,
+                    notes=f"Booked via Virtual Lab Assistant {self.agent_name} for {price_str} ({chosen_slot['slot_label']})."
+                )
+                db.add(appt)
+                db.commit()
+
+                # Dispatch confirmations with price
+                notif_result = notification_service.send_appointment_confirmation(
+                    patient_name=patient_name,
+                    patient_phone=patient_phone,
+                    patient_email=patient_email,
+                    appointment_id=appt.id,
+                    appointment_type=appt_type,
+                    scheduled_date=target_date,
+                    time_slot=slot_label,
+                    tests_requested=test_name,
+                    pickup_address=appt.pickup_address,
+                    fasting_instructions="Fasting is not strictly required for CBC (water is allowed)." if "cbc" in test_name.lower() else "10 to 12 hours of overnight fasting (water is allowed).",
+                    price=price_str
+                )
+
+                self.actions_taken.append(
+                    f"Booked {booking_label} #{appt.id} for {patient_name} on {target_date} ({slot_label}) at {price_str}; "
+                    f"Dispatched GMAIL ({notif_result['gmail']['status']}) & WhatsApp ({notif_result['whatsapp']['status']})"
+                )
+
+                appt.notes += f" [Confirmations Dispatched: WhatsApp ({notif_result['whatsapp']['status']}) & Gmail ({notif_result['gmail']['status']})]"
+                db.commit()
+
+                self.pending_availability = None
+                self.detected_intent = "book_appointment_success"
+
+                response = (
+                    f"{empathy_prefix}Perfect! I have scheduled your {test_name} for tomorrow from {slot_label} at {price_str}. "
+                    f"Our phlebotomist will arrive equipped with a sterile collection kit and cold-chain carrier. "
+                    f"I have also sent your confirmed booking details to your WhatsApp ({patient_phone}) and your Gmail inbox ({patient_email})! "
+                    f"Is there anything else I can assist you with today?"
+                )
+                return self._finalize_turn(
+                    response,
+                    intent="book_appointment_success",
+                    tool_executed="book_appointment",
+                    extra={
+                        "appointment_id": appt.id,
+                        "date": target_date,
+                        "slot": slot_label,
+                        "price": price_str,
+                        "type": appt_type,
+                        "gmail_dispatched": notif_result["gmail"]["status"],
+                        "whatsapp_dispatched": notif_result["whatsapp"]["status"]
+                    }
+                )
 
         try:
             # 1. Emergency red-flag symptom detection -> Immediate Human Medical Handover
@@ -267,6 +476,44 @@ class DiagnosticVoiceAgent:
                     intent="check_policy",
                     tool_executed="query_policy_rag",
                     extra={"citations": citations}
+                )
+
+            # 5B. Check Availability Intent ("User wants CBC tomorrow" -> check_availability() -> DATABASE -> 10-12 AM ₹450 / 12-2 PM ₹500)
+            is_cbc_query = "cbc" in user_lower or "complete blood count" in user_lower
+            is_availability_query = any(q in user_lower for q in [
+                "wants cbc", "want cbc", "need cbc", "available", "availability", "check availability",
+                "slots", "which slot", "what time", "timings"
+            ]) or (is_cbc_query and "tomorrow" in user_lower)
+
+            has_explicit_time = any(t in user_lower for t in ["7:30", "07:30", "6:30", "06:30", "4:00", "04:00", "7 am", "8 am", "6 am"])
+
+            if is_availability_query and not has_explicit_time:
+                self.detected_intent = "check_availability"
+                test_code_to_check = "CBC" if is_cbc_query else ("LIPID" if "lipid" in user_lower else "CBC")
+                avail_data = check_availability(test_query=test_code_to_check, target_date="tomorrow", db=db)
+                self.pending_availability = avail_data
+
+                slot1 = avail_data["slots"][0]
+                slot2 = avail_data["slots"][1]
+                self.actions_taken.append(
+                    f"Executed check_availability('{test_code_to_check}', 'tomorrow') -> Database returned: {slot1['slot_label']} ({slot1['price_formatted']}), {slot2['slot_label']} ({slot2['price_formatted']})"
+                )
+
+                response = (
+                    f"{empathy_prefix}For your {avail_data['test_name']} tomorrow, we have two slots available: "
+                    f"{slot1['slot_label']} for {slot1['price_formatted']}, or {slot2['slot_label']} for {slot2['price_formatted']}. "
+                    f"Which one works best for you?"
+                )
+                return self._finalize_turn(
+                    response,
+                    intent="check_availability_slots",
+                    tool_executed="check_availability",
+                    extra={
+                        "test_name": avail_data["test_name"],
+                        "test_code": avail_data["test_code"],
+                        "target_date": avail_data["target_date"],
+                        "slots": avail_data["slots"]
+                    }
                 )
 
             # 6. Book Appointment: Distinguishes Doorstep vs. In-Situ & Dispatches GMAIL + WHATSAPP

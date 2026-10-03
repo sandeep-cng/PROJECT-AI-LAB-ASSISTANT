@@ -1,6 +1,9 @@
 import os
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 # Add project root to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -292,6 +295,50 @@ def test_gmail_and_whatsapp_notification_dispatch():
     assert api_data["whatsapp"]["status"] in ["sent", "simulated_sent"]
     print("[PASS] POST /api/notifications/test endpoint passed!")
 
+def test_check_availability_database_flow():
+    print("\n--- [TEST 9] Testing check_availability() Database Query & Dynamic Pricing Flow ---")
+    from backend.voice_agent import DiagnosticVoiceAgent, check_availability
+
+    # 1. Direct check_availability() Database Query
+    avail = check_availability("CBC", "tomorrow")
+    assert avail["test_code"] == "CBC"
+    assert len(avail["slots"]) >= 2
+    slot_10_12 = avail["slots"][0]
+    slot_12_2 = avail["slots"][1]
+    assert slot_10_12["slot_label"] == "10–12 AM"
+    assert slot_10_12["price"] == 450
+    assert slot_12_2["slot_label"] == "12–2 PM"
+    assert slot_12_2["price"] == 500
+    print(f"[PASS] check_availability('CBC', 'tomorrow') returned slots: 10-12 AM (Rs.{slot_10_12['price']}) & 12-2 PM (Rs.{slot_12_2['price']})")
+
+    # 2. Conversational Agent Flow: "User wants CBC tomorrow" -> check_availability() -> Database -> 10-12 AM (₹450) vs 12-2 PM (₹500)
+    agent = DiagnosticVoiceAgent(caller_phone="+91 98200 23456", call_sid="TEST-AVAIL-001")
+    turn1 = agent.process_turn("User wants CBC tomorrow")
+    assert turn1["tool_executed"] == "check_availability"
+    assert "10" in turn1["speech"] and "450" in turn1["speech"]
+    assert "12" in turn1["speech"] and "500" in turn1["speech"]
+    print(f"[PASS] Agent Turn 1: check_availability executed and returned slots via TTS speech!")
+
+    # 3. Follow-up Turn: User selects "10 to 12 AM please"
+    turn2 = agent.process_turn("10 to 12 AM please")
+    assert turn2["intent"] == "book_appointment_success"
+    assert "10:00 AM - 12:00 PM" in turn2["speech"]
+    assert "450" in turn2["speech"]
+    assert turn2["extra"]["price"] == "₹450"
+    assert turn2["extra"]["gmail_dispatched"] in ["sent", "simulated_sent"]
+    assert turn2["extra"]["whatsapp_dispatched"] in ["sent", "simulated_sent"]
+    print(f"[PASS] Agent Turn 2: Booked chosen slot 10:00 AM - 12:00 PM at ₹450 with WhatsApp/Gmail alerts!")
+
+    # 4. FastAPI /api/availability endpoint test
+    from backend.main import app
+    client = TestClient(app)
+    res_api = client.get("/api/availability?test=CBC&date=tomorrow")
+    assert res_api.status_code == 200
+    data = res_api.json()
+    assert data["slots"][0]["price"] == 450
+    assert data["slots"][1]["price"] == 500
+    print("[PASS] GET /api/availability endpoint verified!")
+
 if __name__ == "__main__":
     test_policy_rag()
     test_voice_agent_caller_id_and_tools()
@@ -301,6 +348,7 @@ if __name__ == "__main__":
     test_exotel_telephony_and_barge_in()
     test_ambiguity_detection_and_human_sensitivity()
     test_gmail_and_whatsapp_notification_dispatch()
+    test_check_availability_database_flow()
     print("\n" + "=" * 75)
-    print("ALL 8 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
+    print("ALL 9 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
     print("=" * 75)

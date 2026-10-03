@@ -121,6 +121,25 @@ def get_patient_reports(patient_id: int, db: Session = Depends(get_db)):
     reports = db.query(LabReport).filter_by(patient_id=patient_id).order_by(LabReport.id.desc()).all()
     return [r.to_dict() for r in reports]
 
+# --- Appointment Slot Availability (check_availability tool) ---
+@app.get("/api/availability")
+def get_slot_availability(
+    test: str = "CBC",
+    date: str = "tomorrow",
+    type: str = "home_collection",
+    db: Session = Depends(get_db)
+):
+    from backend.voice_agent import check_availability
+    return check_availability(test_query=test, target_date=date, appointment_type=type, db=db)
+
+@app.post("/api/availability/check")
+def check_slot_availability(data: dict, db: Session = Depends(get_db)):
+    from backend.voice_agent import check_availability
+    test_query = data.get("test", data.get("test_name", "CBC"))
+    target_date = data.get("date", data.get("target_date", "tomorrow"))
+    appt_type = data.get("type", data.get("appointment_type", "home_collection"))
+    return check_availability(test_query=test_query, target_date=target_date, appointment_type=appt_type, db=db)
+
 # --- Appointments ---
 @app.get("/api/appointments")
 def get_appointments(db: Session = Depends(get_db)):

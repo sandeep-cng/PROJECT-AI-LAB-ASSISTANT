@@ -27,7 +27,7 @@ def init_and_seed_db():
                     specimen_type="EDTA Whole Blood",
                     fasting_required=False,
                     fasting_hours=0,
-                    price=25.0,
+                    price=450.0,
                     turnaround_hours=8,
                     normal_range_male="Hb: 13.5-17.5 g/dL, WBC: 4.5-11.0 10^3/uL, Platelets: 150-450 10^3/uL",
                     normal_range_female="Hb: 12.0-15.5 g/dL, WBC: 4.5-11.0 10^3/uL, Platelets: 150-450 10^3/uL",
@@ -372,6 +372,12 @@ def init_and_seed_db():
             p1_record.email = "rohan.mehta@example.com"
             p1_record.address = "42 Green Glen Layout, Bellandur, Bengaluru"
             p1_record.emergency_contact = "+91 98200 99999"
+            db.commit()
+
+        # Ensure CBC price is set to ₹450 in catalog
+        cbc_rec = db.query(TestCatalog).filter_by(test_code="CBC").first()
+        if cbc_rec:
+            cbc_rec.price = 450.0
             db.commit()
 
         print("Database initialized and pre-seeded successfully!")

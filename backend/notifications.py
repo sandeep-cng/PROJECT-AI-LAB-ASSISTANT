@@ -46,7 +46,8 @@ class NotificationService:
         time_slot: str,
         tests_requested: str,
         pickup_address: str,
-        fasting_instructions: str = "10 to 12 hours of overnight fasting (water is permitted). Avoid caffeine and heavy meals."
+        fasting_instructions: str = "10 to 12 hours of overnight fasting (water is permitted). Avoid caffeine and heavy meals.",
+        price: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Sends rich HTML and plain-text booking confirmation to the patient's Gmail.
@@ -57,6 +58,7 @@ class NotificationService:
         type_label = "Doorstep Home Sample Collection" if appointment_type == "home_collection" else "In-Situ Laboratory Clinic Visit"
         agent_name = os.getenv("AGENT_NAME", "Vinod")
         agent_phone = os.getenv("AGENT_PHONE_NUMBER", "+91 80 4388 8802")
+        price_str = f"₹{price}" if isinstance(price, (int, float)) else (str(price) if price else "₹450")
 
         subject = f"Appointment Confirmed: {type_label} - Apex MediLab (Ref #{appointment_id})"
 
@@ -98,6 +100,7 @@ class NotificationService:
                 <div class="detail-row"><span class="label">Scheduled Date:</span><span class="value">{scheduled_date}</span></div>
                 <div class="detail-row"><span class="label">Time Slot:</span><span class="value">{time_slot}</span></div>
                 <div class="detail-row"><span class="label">Diagnostic Tests:</span><span class="value">{tests_requested}</span></div>
+                <div class="detail-row"><span class="label">Total Fee / Pricing:</span><span class="value" style="color: #059669; font-weight: 800;">{price_str}</span></div>
                 <div class="detail-row"><span class="label">Location / Address:</span><span class="value">{pickup_address}</span></div>
               </div>
 
@@ -127,6 +130,7 @@ class NotificationService:
             f"• Date: {scheduled_date}\n"
             f"• Time Slot: {time_slot}\n"
             f"• Tests: {tests_requested}\n"
+            f"• Fee / Price: {price_str}\n"
             f"• Address: {pickup_address}\n\n"
             f"Pre-Test Instructions: {fasting_instructions}\n\n"
             f"Support Hotline ({agent_name}): {agent_phone}\n"
@@ -182,7 +186,8 @@ class NotificationService:
         time_slot: str,
         tests_requested: str,
         pickup_address: str,
-        fasting_instructions: str = "10 to 12 hours of overnight fasting (water is allowed)."
+        fasting_instructions: str = "10 to 12 hours of overnight fasting (water is allowed).",
+        price: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Sends formatted WhatsApp message with booking details, fasting rules, and clinic helpline.
@@ -197,6 +202,7 @@ class NotificationService:
         type_label = "Doorstep Home Sample Collection 🏡" if appointment_type == "home_collection" else "In-Situ Laboratory Clinic Visit 🏥"
         agent_name = os.getenv("AGENT_NAME", "Vinod")
         agent_phone = os.getenv("AGENT_PHONE_NUMBER", "+91 80 4388 8802")
+        price_str = f"₹{price}" if isinstance(price, (int, float)) else (str(price) if price else "₹450")
 
         whatsapp_message = (
             f"✅ *APEX FAMILY DIAGNOSTIC LAB - BOOKING CONFIRMED*\n\n"
@@ -207,6 +213,7 @@ class NotificationService:
             f"📅 *Date:* {scheduled_date}\n"
             f"⏰ *Time Slot:* {time_slot}\n"
             f"🧪 *Tests Requested:* {tests_requested}\n"
+            f"💰 *Fee / Amount:* {price_str}\n"
             f"📍 *Location:* {pickup_address}\n\n"
             f"⚠️ *Fasting Guidelines:* {fasting_instructions}\n\n"
             f"🧊 Our phlebotomist will arrive with a sterile vacuum kit and cold chain preservation box.\n\n"
@@ -284,7 +291,8 @@ class NotificationService:
         time_slot: str,
         tests_requested: str,
         pickup_address: str,
-        fasting_instructions: str = "10 to 12 hours of overnight fasting (water is allowed)."
+        fasting_instructions: str = "10 to 12 hours of overnight fasting (water is allowed).",
+        price: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Triggers simultaneous confirmation on both GMAIL and WHATSAPP.
@@ -298,7 +306,8 @@ class NotificationService:
             time_slot=time_slot,
             tests_requested=tests_requested,
             pickup_address=pickup_address,
-            fasting_instructions=fasting_instructions
+            fasting_instructions=fasting_instructions,
+            price=price
         )
 
         whatsapp_result = self.send_whatsapp_confirmation(
@@ -310,7 +319,8 @@ class NotificationService:
             time_slot=time_slot,
             tests_requested=tests_requested,
             pickup_address=pickup_address,
-            fasting_instructions=fasting_instructions
+            fasting_instructions=fasting_instructions,
+            price=price
         )
 
         return {

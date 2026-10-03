@@ -320,6 +320,8 @@ function startCallSession(preferredTest = null) {
           appendTransferCard('Emergency Clinical Response Desk', 'Emergency Red-Flag Symptoms', '112 / +91 80 4388 8802');
         } else if (msg.intent === 'human_handover' || msg.intent === 'out_of_scope_transfer') {
           appendTransferCard('Senior Human Clinical Desk', 'Specialist Consultation Required', '+91 80 4388 8802');
+        } else if (msg.intent === 'check_availability_slots' || (msg.extra && msg.extra.slots)) {
+          appendSlotSelectionCards(msg.extra.slots || [], msg.extra.test_name);
         } else if (msg.intent === 'book_appointment_success') {
           appendConfirmationBadges(msg.extra || {});
         }
@@ -436,6 +438,8 @@ async function sendUserSpeechTurn() {
 
         if (data.intent === 'human_handover_ambiguity') {
           appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '+91 80 4388 8802');
+        } else if (data.intent === 'check_availability_slots' || (data.extra && data.extra.slots)) {
+          appendSlotSelectionCards(data.extra.slots || [], data.extra.test_name);
         } else if (data.intent === 'book_appointment_success') {
           appendConfirmationBadges(data.extra || {});
         }
@@ -491,6 +495,41 @@ function appendConfirmationBadges(extra) {
   modalTranscriptFeed.appendChild(badgesRow);
   modalTranscriptFeed.scrollTop = modalTranscriptFeed.scrollHeight;
 }
+
+function appendSlotSelectionCards(slots, testName) {
+  if (!slots || slots.length === 0) return;
+  const card = document.createElement('div');
+  card.className = 'speech-slot-selection-box';
+  card.style.margin = '10px 0';
+  card.style.background = '#ffffff';
+  card.style.border = '1px solid #bae6fd';
+  card.style.borderRadius = '10px';
+  card.style.padding = '12px';
+  card.style.boxShadow = '0 2px 8px rgba(2, 132, 199, 0.08)';
+
+  card.innerHTML = `
+    <div style="font-size: 0.85rem; font-weight: 700; color: #0369a1; margin-bottom: 8px;">
+      📅 Available Slots in Database (Tap to Choose or Speak):
+    </div>
+    <div style="display: flex; gap: 10px;">
+      ${slots.map(s => `
+        <button type="button" onclick="selectSlot('${s.slot_label}')" style="flex: 1; padding: 10px 8px; border-radius: 8px; border: 1.5px solid #0284c7; background: #f0f9ff; cursor: pointer; text-align: center; font-family: inherit;">
+          <div style="font-weight: 700; font-size: 0.95rem; color: #0369a1;">${s.slot_label}</div>
+          <div style="font-size: 0.75rem; color: #64748b; margin: 2px 0;">${s.time_slot}</div>
+          <div style="font-size: 1.05rem; font-weight: 800; color: #059669;">${s.price_formatted}</div>
+        </button>
+      `).join('')}
+    </div>
+  `;
+  modalTranscriptFeed.appendChild(card);
+  modalTranscriptFeed.scrollTop = modalTranscriptFeed.scrollHeight;
+}
+
+window.selectSlot = function(slotLabel) {
+  stopAgentSpeaking('slot_selected_click');
+  modalUserText.value = `${slotLabel} please`;
+  sendUserSpeechTurn();
+};
 
 // --- Text-to-Speech (Indian Male Virtual Lab Assistant: Vinod) ---
 function pickIndianMaleVoice() {
