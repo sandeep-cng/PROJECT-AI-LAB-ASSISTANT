@@ -320,6 +320,7 @@ async def rest_chat_turn(request: Request):
     active_sessions[agent.call_sid] = agent
 
     result = agent.process_turn(user_text)
+    extra_data = result.get("extra", {})
     return {
         "type": "agent_response",
         "speech": result["speech"],
@@ -327,6 +328,7 @@ async def rest_chat_turn(request: Request):
         "tool_executed": result.get("tool_executed"),
         "actions_taken": result.get("actions_taken", []),
         "citations": result.get("citations", []),
+        "slots": extra_data.get("slots", result.get("slots", [])),
         "extra": result
     }
 

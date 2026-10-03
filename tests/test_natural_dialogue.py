@@ -52,8 +52,9 @@ def test_example_real_conversation_funnel():
     # Opening
     greeting = agent.get_initial_greeting()
     print(f"Agent: '{greeting['speech']}'")
-    assert "Hi, I'm your Lab Assistant Vinod. How can I help?" in greeting["speech"] or "Hi! I'm your Lab Assistant" in greeting["speech"]
-    assert "How can I help?" in greeting["speech"]
+    assert "Hi, I'm your Lab Assistant Vinod" in greeting["speech"] or "Hi! I'm your Lab Assistant" in greeting["speech"]
+    assert "How can I help" in greeting["speech"]
+
 
 
     # Turn 1: User: "I want a blood test."

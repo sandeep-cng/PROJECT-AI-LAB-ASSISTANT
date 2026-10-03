@@ -36,8 +36,22 @@ const btnModalMic = document.getElementById('btn-modal-mic');
 const modalUserText = document.getElementById('modal-user-text');
 const btnModalSend = document.getElementById('btn-modal-send');
 const btnModalInterrupt = document.getElementById('btn-modal-interrupt');
+const btnModalVoiceToggle = document.getElementById('btn-modal-voice-toggle');
 const bargeInBadge = document.getElementById('barge-in-badge');
 const packagesContainer = document.getElementById('packages-container');
+
+// Floating Live Chat Widget Elements
+const floatingChatLauncher = document.getElementById('floating-chat-launcher');
+const floatingChatWidget = document.getElementById('floating-chat-widget');
+const btnChatClose = document.getElementById('btn-chat-close');
+const headerChatTrigger = document.getElementById('header-chat-trigger');
+const btnHeroChat = document.getElementById('btn-hero-chat');
+const chatMessagesContainer = document.getElementById('chat-messages-container');
+const chatTextInput = document.getElementById('chat-text-input');
+const chatBtnSend = document.getElementById('chat-btn-send');
+const btnChatVoiceToggle = document.getElementById('btn-chat-voice-toggle');
+const chatVoiceIcon = document.getElementById('chat-voice-icon');
+const btnChatOpenCall = document.getElementById('btn-chat-open-call');
 
 // Visualizer nodes
 const pipelineStatusBadge = document.getElementById('pipeline-status-badge');
@@ -159,6 +173,7 @@ class StreamingTTSEngine {
     this.activeUtterance = null;
     this.cachedVoice = null;
     this.generationId = 0;
+    this.lastSpeakStartTime = 0;
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = () => {
@@ -242,8 +257,9 @@ class StreamingTTSEngine {
         return;
       }
       this.isSpeaking = true;
+      this.lastSpeakStartTime = Date.now();
       if (modalAudioState) {
-        modalAudioState.textContent = 'Vinod is Speaking • Speak anytime to interrupt';
+        modalAudioState.textContent = 'Vinod is Speaking • Speak or type to interrupt';
         modalAudioState.style.color = '#38bdf8';
       }
       PipelineVisualizer.showTTSPlaying();
@@ -336,10 +352,8 @@ class AudioInputEngine {
         }
         const rms = Math.sqrt(sumSquares / dataArray.length);
 
-        // Hardware VAD: If speech energy exceeds threshold while agent is talking -> INSTANT BARGE IN!
-        if (rms > this.vadThreshold && (streamingTTS.isSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking))) {
-          stopAgentSpeaking('mic_voice_energy_vad');
-        }
+        // Hardware VAD: RMS energy drives waveform visualizer only.
+        // It does NOT stop TTS to prevent acoustic feedback loops from laptop speakers.
 
         this.animFrameId = requestAnimationFrame(checkEnergy);
       };
@@ -393,9 +407,13 @@ class STTEngine {
       if (btnModalMic) btnModalMic.classList.add('recording');
     };
 
-    // Instant speech start detection -> Stop TTS with 0 latency
+    // Instant speech start detection -> with Echo Guard
     this.recognition.onspeechstart = () => {
-      stopAgentSpeaking('stt_speech_start');
+      const isAgentActive = streamingTTS.isSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking);
+      // Echo Guard: If the agent is speaking or started speaking recently (<1.5s), don't trigger false barge-in
+      if (isAgentActive && (Date.now() - streamingTTS.lastSpeakStartTime < 1500)) {
+        return; // Ignore speaker output echo
+      }
       PipelineVisualizer.showUserSpeaking();
       if (modalAudioState) {
         modalAudioState.textContent = '🎤 Voice detected — Listening to you...';
@@ -404,13 +422,10 @@ class STTEngine {
     };
 
     this.recognition.onsoundstart = () => {
-      stopAgentSpeaking('stt_sound_start');
+      // Do NOT interrupt on raw sound detection (room noise, fan, or speaker bleed triggers soundstart)
     };
 
     this.recognition.onresult = (event) => {
-      stopAgentSpeaking('stt_interim_result');
-      PipelineVisualizer.showUserSpeaking();
-
       let interimTranscript = '';
       let finalChunk = '';
 
@@ -427,6 +442,15 @@ class STTEngine {
       }
 
       const display = (this.accumulatedSpeech + ' ' + interimTranscript).trim();
+
+      // Intentional speech barge-in: Only interrupt when user speaks actual words with sufficient length
+      const isAgentActive = streamingTTS.isSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking);
+      if (isAgentActive && display.length >= 3 && (Date.now() - streamingTTS.lastSpeakStartTime > 800)) {
+        stopAgentSpeaking('stt_user_words');
+      }
+
+      PipelineVisualizer.showUserSpeaking();
+
       if (display && modalUserText) {
         modalUserText.value = display;
         if (modalActionText) {
@@ -516,6 +540,15 @@ class UserSpeechDetector {
 
   // Triggered when: User starts speaking? -> YES
   onUserStartsSpeaking(source = 'vad_mic_energy') {
+    // Guard against false positive interruptions from ambient noise or speaker bleed
+    if (source === 'mic_voice_energy_vad' || source === 'stt_sound_start') {
+      return;
+    }
+    // Echo guard: if agent started speaking < 1200ms ago, ignore speech start echo from speakers
+    if (source === 'stt_speech_start' && (Date.now() - streamingTTS.lastSpeakStartTime < 1200)) {
+      return;
+    }
+
     const isAiSpeaking = streamingTTS.isSpeaking || 
                          (window.speechSynthesis && window.speechSynthesis.speaking) ||
                          this.isAnyAudioPlaying();
@@ -783,6 +816,7 @@ async function sendUserSpeechTurn() {
   stopAgentSpeaking('user_sent_speech');
   appendSpeechBubble('You', text, 'user');
   modalUserText.value = '';
+  modalUserText.focus();
   PipelineVisualizer.showProcessing();
 
   if (!useRestFallback && callSocket && callSocket.readyState === WebSocket.OPEN) {
@@ -1081,9 +1115,218 @@ function intOrVal(v) {
   return typeof v === 'number' ? Math.round(v) : v;
 }
 
+// ==========================================================================
+// FLOATING LIVE CHAT & TYPING CONVERSATION ENGINE
+// ==========================================================================
+let chatSessionSid = null;
+let currentChatPhone = '+91 98200 23456';
+
+function toggleChatWidget(show) {
+  if (show) {
+    if (floatingChatWidget) floatingChatWidget.style.display = 'flex';
+    if (floatingChatLauncher) floatingChatLauncher.style.display = 'none';
+    if (chatTextInput) {
+      setTimeout(() => chatTextInput.focus(), 120);
+    }
+  } else {
+    if (floatingChatWidget) floatingChatWidget.style.display = 'none';
+    if (floatingChatLauncher) floatingChatLauncher.style.display = 'flex';
+  }
+}
+
+function toggleVoiceOutput() {
+  isVoiceOutputEnabled = !isVoiceOutputEnabled;
+  if (!isVoiceOutputEnabled) {
+    streamingTTS.cancel();
+    if (btnChatVoiceToggle) btnChatVoiceToggle.innerHTML = '🔇 Voice Off';
+    if (btnModalVoiceToggle) {
+      btnModalVoiceToggle.innerHTML = '🔇 Voice Off';
+      btnModalVoiceToggle.classList.add('muted');
+    }
+    showToast('Voice output muted. You can type and converse silently.');
+  } else {
+    if (btnChatVoiceToggle) btnChatVoiceToggle.innerHTML = '🔊 Voice On';
+    if (btnModalVoiceToggle) {
+      btnModalVoiceToggle.innerHTML = '🔊 Voice On';
+      btnModalVoiceToggle.classList.remove('muted');
+    }
+    showToast('Voice output enabled.');
+  }
+}
+
+function appendChatMessageBubble(sender, text, type, extra = {}) {
+  if (!chatMessagesContainer) return;
+
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `chat-msg ${type}`;
+
+  const avatar = type === 'user' ? 'ME' : 'VN';
+
+  let slotsHtml = '';
+  const slots = (extra.extra && extra.extra.slots) ? extra.extra.slots : (extra.slots || []);
+  if (slots.length > 0) {
+    slotsHtml = `
+      <div style="margin-top: 10px; padding: 10px; background: #ffffff; border: 1.5px solid #bae6fd; border-radius: 8px;">
+        <div style="font-size: 0.76rem; font-weight: 700; color: #0369a1; margin-bottom: 6px;">📅 Choose a Slot:</div>
+        <div style="display: flex; gap: 8px;">
+          ${slots.map(s => `
+            <button type="button" onclick="selectChatSlot('${s.slot_label}')" style="flex: 1; padding: 8px 6px; border: 1.5px solid #0284c7; background: #f0f9ff; border-radius: 6px; cursor: pointer; text-align: center; font-family: inherit;">
+              <div style="font-weight: 700; font-size: 0.88rem; color: #0369a1;">${s.slot_label}</div>
+              <div style="font-size: 0.7rem; color: #64748b;">${s.time_slot}</div>
+              <div style="font-size: 0.95rem; font-weight: 800; color: #059669;">${s.price_formatted}</div>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  let bookingHtml = '';
+  const intentName = extra.intent || (extra.extra && extra.extra.intent);
+  if (intentName === 'book_appointment_success' || (extra.extra && extra.extra.appointment_id)) {
+    const ex = extra.extra || extra;
+    bookingHtml = `
+      <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+        <span class="badge-notif-whatsapp">💬 WhatsApp Dispatched (${ex.whatsapp_dispatched || 'Active'})</span>
+        <span class="badge-notif-gmail">✉️ Gmail Dispatched (${ex.gmail_dispatched || 'Active'})</span>
+      </div>
+    `;
+  }
+
+  let handoverHtml = '';
+  if (intentName === 'human_handover_ambiguity' || intentName === 'human_handover' || (extra.extra && extra.extra.ambiguity_detected)) {
+    handoverHtml = `
+      <div style="margin-top: 8px; padding: 8px 10px; background: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 0.76rem; color: #78350f;">
+        <strong>Clinical Specialist Desk:</strong> Direct transfer to Senior Duty Medical Officer at <a href="tel:+918043888802" style="font-weight: 700; color: #0284c7;">+91 80 4388 8802</a>.
+      </div>
+    `;
+  }
+
+  msgDiv.innerHTML = `
+    <div class="chat-msg-avatar">${avatar}</div>
+    <div class="chat-msg-content">
+      <div class="chat-msg-sender">${sender}</div>
+      <div class="chat-msg-text">${text.replace(/\n/g, '<br>')}</div>
+      ${slotsHtml}
+      ${bookingHtml}
+      ${handoverHtml}
+    </div>
+  `;
+
+  chatMessagesContainer.appendChild(msgDiv);
+  chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+}
+
+window.selectChatSlot = function(slotLabel) {
+  sendChatMessage(`${slotLabel} please`);
+};
+
+async function sendChatMessage(customText) {
+  const text = (customText !== undefined ? customText : (chatTextInput ? chatTextInput.value : '')).trim();
+  if (!text) return;
+
+  stopAgentSpeaking('user_typing_chat');
+  appendChatMessageBubble('You', text, 'user');
+  if (chatTextInput) chatTextInput.value = '';
+
+  if (!chatSessionSid) {
+    chatSessionSid = 'CHAT-' + Date.now();
+  }
+
+  // Show typing indicator in chat
+  const typingIndicator = document.createElement('div');
+  typingIndicator.className = 'chat-msg agent typing-indicator-msg';
+  typingIndicator.innerHTML = `
+    <div class="chat-msg-avatar">VN</div>
+    <div class="chat-msg-content" style="font-style: italic; color: #64748b;">
+      Vinod is typing...
+    </div>
+  `;
+  if (chatMessagesContainer) {
+    chatMessagesContainer.appendChild(typingIndicator);
+    chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+  }
+
+  try {
+    const res = await fetch('/api/telephony/chat-turn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call_sid: chatSessionSid,
+        caller_phone: currentChatPhone,
+        text: text
+      })
+    });
+
+    if (typingIndicator) typingIndicator.remove();
+
+    if (res.ok) {
+      const data = await res.json();
+      appendChatMessageBubble('Vinod (Lab Assistant)', data.speech, 'agent', data);
+      
+      // If voice is enabled, speak Vinod's response
+      if (isVoiceOutputEnabled) {
+        speakAudio(data.speech);
+      }
+    }
+  } catch (err) {
+    if (typingIndicator) typingIndicator.remove();
+    console.error('Chat turn failed:', err);
+    appendChatMessageBubble('Vinod (Lab Assistant)', 'I apologize, but I had trouble processing that. Please try again or call me directly at +91 80 4388 8802.', 'agent');
+  }
+}
+
+function initChatWidgetListeners() {
+  if (floatingChatLauncher) {
+    floatingChatLauncher.addEventListener('click', () => toggleChatWidget(true));
+  }
+  if (btnChatClose) {
+    btnChatClose.addEventListener('click', () => toggleChatWidget(false));
+  }
+  if (headerChatTrigger) {
+    headerChatTrigger.addEventListener('click', () => toggleChatWidget(true));
+  }
+  if (btnHeroChat) {
+    btnHeroChat.addEventListener('click', () => toggleChatWidget(true));
+  }
+
+  if (chatBtnSend && chatTextInput) {
+    chatBtnSend.addEventListener('click', () => sendChatMessage());
+    chatTextInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
+  }
+
+  if (btnChatVoiceToggle) {
+    btnChatVoiceToggle.addEventListener('click', toggleVoiceOutput);
+  }
+  if (btnModalVoiceToggle) {
+    btnModalVoiceToggle.addEventListener('click', toggleVoiceOutput);
+  }
+
+  if (btnChatOpenCall) {
+    btnChatOpenCall.addEventListener('click', () => {
+      toggleChatWidget(false);
+      openCallModal();
+    });
+  }
+
+  document.querySelectorAll('.chat-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const msg = chip.dataset.msg;
+      sendChatMessage(msg);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initCallTriggers();
+  initChatWidgetListeners();
   initFAQAccordion();
   initModalVisualizer();
   loadHealthPackages();
 });
+
