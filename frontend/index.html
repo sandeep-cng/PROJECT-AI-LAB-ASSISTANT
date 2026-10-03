@@ -43,6 +43,7 @@
 
       <!-- Primary Navigation Links -->
       <nav class="main-nav">
+        <a href="#architecture" class="nav-link" style="color: #38bdf8; font-weight: 700;">⚡ AI Architecture</a>
         <a href="#sampling-options" class="nav-link">Doorstep vs. In-Situ</a>
         <a href="#services" class="nav-link">Our Services</a>
         <a href="#packages" class="nav-link">Health Packages</a>
@@ -226,6 +227,199 @@
           <h3>Doorstep or In-Situ Visit</h3>
           <p>Either a certified phlebotomist arrives at your home at your scheduled morning slot, or you walk in for a priority fast-track appointment at our laboratory.</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- END-TO-END VOICE AI PIPELINE ARCHITECTURE SECTION                         -->
+  <!-- ========================================================================= -->
+  <section class="section architecture-section" id="architecture">
+    <div class="container">
+      <div class="section-heading text-center">
+        <span class="sub-title">CORE AI PIPELINE ARCHITECTURE</span>
+        <h2>End-to-End Telephony & Voice Lab Assistant</h2>
+        <p>Engineered for real-time speech processing, instant barge-in detection, dynamic database slot pricing (₹450 / ₹500), and dual WhatsApp & Gmail confirmations.</p>
+      </div>
+
+      <div class="arch-flow-container">
+        <!-- 1. User Input -->
+        <div class="arch-user-bubble">
+          <span style="font-size: 1.2rem;">👤</span>
+          <div>
+            <strong>USER:</strong>
+            <span style="font-weight: 400; opacity: 0.95;"> "I need a CBC tomorrow"</span>
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <span>▼ microphone</span>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 2. Audio Input Engine -->
+        <div class="arch-card">
+          <div class="arch-card-header">
+            <span>🎙️ AUDIO INPUT ENGINE</span>
+          </div>
+          <div class="arch-card-body">
+            <ul>
+              <li>• Noise suppression</li>
+              <li>• Echo cancellation</li>
+              <li>• Voice Activity Detection (VAD)</li>
+              <li>• Turn detection</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <span>▼</span>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 3. STT Engine -->
+        <div class="arch-card">
+          <div class="arch-card-header">
+            <span>⚡ STT ENGINE (Speech → Text)</span>
+          </div>
+          <div class="arch-card-body">
+            <span style="color: #38bdf8; font-weight: 700;">STREAMING</span> • Real-time interim phoneme capture with instant barge-in interruption.
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <span>▼</span>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 4. Conversation Engine -->
+        <div class="arch-card" style="max-width: 580px;">
+          <div class="arch-card-header">
+            <span>🧠 CONVERSATION ENGINE</span>
+          </div>
+          <div class="arch-card-body">
+            <ul>
+              <li>• <strong>Conversation State</strong></li>
+              <li>• <strong>Short-term Memory</strong></li>
+              <li>• <strong>Intent Detection</strong></li>
+              <li>• <strong>Context Management</strong></li>
+              <li>• <strong>Response Strategy</strong></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <span>▼</span>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 5. LLM / Agent -->
+        <div class="arch-card" style="max-width: 580px; border-color: #0284c7;">
+          <div class="arch-card-header" style="color: #38bdf8;">
+            <span>🤖 LLM / AGENT (Vinod)</span>
+          </div>
+          <div class="arch-card-body">
+            <p>Understand user • Decide response • Decide whether tool is required</p>
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <div style="display: flex; gap: 140px; font-size: 0.76rem; font-weight: 800;">
+            <span style="color: #c084fc;">Question ▼</span>
+            <span style="color: #34d399;">Action required ▼</span>
+          </div>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 6. Dual Branch: RAG vs Agent Tools -->
+        <div class="arch-branch-grid">
+          <div class="arch-branch-card rag-branch">
+            <div class="arch-card-header">
+              <span>📚 RAG</span>
+            </div>
+            <div class="arch-card-body">
+              <p>Verified Semantic Knowledge Retrieval</p>
+              <div class="arch-branch-pills">
+                <span class="arch-pill rag">Test Profiles</span>
+                <span class="arch-pill rag">FAQ & TAT</span>
+                <span class="arch-pill rag">Prep (Fasting)</span>
+                <span class="arch-pill rag">Policy & Refund</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="arch-branch-card tools-branch">
+            <div class="arch-card-header">
+              <span>🛠️ AGENT TOOLS</span>
+            </div>
+            <div class="arch-card-body">
+              <p>Autonomous Transactional Actions</p>
+              <div class="arch-branch-pills">
+                <span class="arch-pill tool">Price (INR)</span>
+                <span class="arch-pill tool">Availability (10–12 AM ₹450 / 12–2 PM ₹500)</span>
+                <span class="arch-pill tool">Lab In-Situ</span>
+                <span class="arch-pill tool">Home Collection</span>
+                <span class="arch-pill tool">Booking (WhatsApp/Gmail)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <span>▼</span>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 7. Response Generator -->
+        <div class="arch-card">
+          <div class="arch-card-header">
+            <span>✨ RESPONSE GENERATOR</span>
+          </div>
+          <div class="arch-card-body">
+            Empathetic, culturally respectful medical phrasing synthesized for spoken delivery.
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <span>▼</span>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 8. Streaming TTS -->
+        <div class="arch-card">
+          <div class="arch-card-header">
+            <span>🔊 STREAMING TTS</span>
+          </div>
+          <div class="arch-card-body">
+            Sentence-chunked streaming speech synthesis • Dedicated Indian Male Voice (Vinod).
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <div class="arch-connector-line"></div>
+          <span>▼</span>
+          <div class="arch-connector-line"></div>
+        </div>
+
+        <!-- 9. Audio Output -->
+        <div class="arch-user-bubble" style="background: #10b981;">
+          <span style="font-size: 1.2rem;">🎧</span>
+          <div>
+            <strong>AUDIO OUTPUT ➔ USER</strong>
+            <span style="font-weight: 400; opacity: 0.95;"> (Instant Stop on Barge-In)</span>
+          </div>
+        </div>
+
+        <button class="btn-primary" style="margin-top: 24px; padding: 14px 28px; font-size: 1rem;" onclick="openCallModal('CBC')">
+          <span>🚀 Launch Live Call Demo with Vinod (+91 80 4388 8802)</span>
+        </button>
       </div>
     </div>
   </section>
@@ -481,6 +675,60 @@
           <span class="modal-timer" id="modal-timer">00:00</span>
         </div>
         <canvas id="modal-waveform-canvas" width="480" height="60"></canvas>
+      </div>
+
+      <!-- Live Voice Pipeline Architecture Flow Visualizer -->
+      <div class="pipeline-visualizer" id="pipeline-visualizer">
+        <div class="pipeline-header">
+          <span>⚡ Live Voice Pipeline Architecture</span>
+          <span class="pipeline-status-badge" id="pipeline-status-badge">Idle • Listening</span>
+        </div>
+        <div class="pipeline-track">
+          <div class="pipeline-step" id="pipe-user">
+            <strong>User</strong>
+            <span>Voice Input</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-audio-engine" title="Noise suppression • Echo cancellation • VAD • Turn detection">
+            <strong>Audio Engine</strong>
+            <span>VAD & Turn</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-stt" title="Real-time Streaming Speech-to-Text">
+            <strong>Streaming STT</strong>
+            <span>Speech → Text</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-conv-engine" title="State • Short-Term Memory • Intent • Context • Strategy">
+            <strong>Conv Engine</strong>
+            <span>State & Context</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-llm-agent" title="LLM Agent: Decide response & Tool requirement">
+            <strong>LLM / Agent</strong>
+            <span>Vinod AI</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-branch" title="Dual Routing: Question (RAG) vs Action (Agent Tools)">
+            <strong id="pipe-branch-title">Question / Action</strong>
+            <span id="pipe-branch-desc">RAG or Tools</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-resp-gen" title="Response Generator: Empathetic Clinical Synthesis">
+            <strong>Response Gen</strong>
+            <span>Speech Synth</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-tts" title="Streaming TTS Engine: Sentence-streamed Indian Male Voice">
+            <strong>Streaming TTS</strong>
+            <span>Indian Male</span>
+          </div>
+          <span class="pipeline-arrow">➔</span>
+          <div class="pipeline-step" id="pipe-output" title="Audio Output to Caller with Instant Barge-In Protection">
+            <strong>Audio Output</strong>
+            <span>Speaker / Ear</span>
+          </div>
+        </div>
       </div>
 
       <!-- Real-Time Speech Conversation Stream -->

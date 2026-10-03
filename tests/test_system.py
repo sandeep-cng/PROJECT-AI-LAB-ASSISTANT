@@ -339,6 +339,60 @@ def test_check_availability_database_flow():
     assert data["slots"][1]["price"] == 500
     print("[PASS] GET /api/availability endpoint verified!")
 
+def test_pipeline_architecture_routing():
+    print("\n--- [TEST 10] Testing Complete Pipeline Architecture: Question (RAG) vs Action (Agent Tools) ---")
+    from backend.voice_agent import DiagnosticVoiceAgent, AgentTools, RAGEngineRouter, ConversationEngine, ConversationState
+
+    agent = DiagnosticVoiceAgent(caller_phone="+91 98200 23456", call_sid="TEST-PIPELINE-001")
+
+    # 1. Pipeline Test: "I need a CBC tomorrow" -> Action Required -> AGENT TOOLS -> check_availability -> 10-12 AM (₹450) & 12-2 PM (₹500)
+    print("Step 1: User says: 'I need a CBC tomorrow'")
+    turn1 = agent.process_turn("I need a CBC tomorrow")
+    assert turn1["tool_executed"] == "check_availability", "Action must execute check_availability tool"
+    trace1 = turn1["extra"]["pipeline_trace"]
+    assert trace1["category"] == "Action required", "Must classify as 'Action required'"
+    assert trace1["route"] == "AGENT_TOOLS", "Must route to AGENT_TOOLS"
+    assert trace1["component"] == "Availability", "Component must be Availability"
+    assert "10" in turn1["speech"] and "450" in turn1["speech"], "Must offer 10-12 AM at ₹450"
+    assert "12" in turn1["speech"] and "500" in turn1["speech"], "Must offer 12-2 PM at ₹500"
+    print(f"[PASS] Action Required -> AGENT TOOLS (Availability) -> Returned: 10-12 AM (₹450) & 12-2 PM (₹500)")
+
+    # 2. Pipeline Test: Question -> RAG (Prep / Fasting)
+    print("\nStep 2: User asks Question: 'Do I need to fast before CBC test?'")
+    agent2 = DiagnosticVoiceAgent(caller_phone="+91 98200 23456", call_sid="TEST-PIPELINE-002")
+    turn2 = agent2.process_turn("Do I need to fast before CBC test?")
+    trace2 = turn2["extra"]["pipeline_trace"]
+    assert trace2["category"] == "Question", "Must classify as 'Question'"
+    assert trace2["route"] == "RAG", "Must route to RAG"
+    assert trace2["component"] == "Prep", "Component must be Prep"
+    assert "fasting" in turn2["speech"].lower(), "Must address fasting"
+    print(f"[PASS] Question -> RAG (Prep) -> Provided verified SOP guidance with citations!")
+
+    # 3. Pipeline Test: Question -> RAG (Policy / Refund)
+    print("\nStep 3: User asks Question: 'What is your cancellation and refund policy?'")
+    turn3 = agent2.process_turn("What is your cancellation and refund policy?")
+    trace3 = turn3["extra"]["pipeline_trace"]
+    assert trace3["category"] == "Question", "Must classify as 'Question'"
+    assert trace3["route"] == "RAG", "Must route to RAG"
+    assert trace3["component"] == "Policy", "Component must be Policy"
+    print(f"[PASS] Question -> RAG (Policy) -> Policy citations verified!")
+
+    # 4. Agent Tools Suite Verification
+    price_info = AgentTools.get_pricing("CBC")
+    assert price_info["price"] == 450
+    assert price_info["price_formatted"] == "₹450"
+    print(f"[PASS] AgentTools.get_pricing('CBC') returned {price_info['price_formatted']}")
+
+    lab_info = AgentTools.get_lab_info()
+    assert "Apex Family Diagnostic" in lab_info["name"]
+    assert "NABL Accredited" in lab_info["certifications"]
+    print(f"[PASS] AgentTools.get_lab_info() verified: {lab_info['name']} ({', '.join(lab_info['certifications'])})")
+
+    home_col = AgentTools.check_home_collection()
+    assert home_col["service_available"] is True
+    assert "2°C - 8°C" in home_col["cold_chain_carrier"]
+    print(f"[PASS] AgentTools.check_home_collection() verified: {home_col['cold_chain_carrier']}")
+
 if __name__ == "__main__":
     test_policy_rag()
     test_voice_agent_caller_id_and_tools()
@@ -349,6 +403,8 @@ if __name__ == "__main__":
     test_ambiguity_detection_and_human_sensitivity()
     test_gmail_and_whatsapp_notification_dispatch()
     test_check_availability_database_flow()
+    test_pipeline_architecture_routing()
     print("\n" + "=" * 75)
-    print("ALL 9 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
+    print("ALL 10 AUTOMATED TEST SUITES COMPLETED WITH 100% SUCCESS!")
     print("=" * 75)
+

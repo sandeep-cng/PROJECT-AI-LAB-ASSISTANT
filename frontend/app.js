@@ -1,7 +1,11 @@
 // ==========================================================================
-// APEX FAMILY DIAGNOSTIC LAB - FRONTEND APPLICATION
-// Clean Clinic Experience with Dedicated Customer Support AI Agent
-// Features Instant Barge-In (Agent stops speaking the instant user speaks)
+// APEX FAMILY DIAGNOSTIC LAB - VOICE AI PIPELINE FRONTEND
+// Implements the End-to-End Voice Architecture:
+// [User] ➔ [Audio Input Engine] ➔ [Streaming STT] ➔ [Conversation Engine]
+// ➔ [LLM/Agent] ➔ [Question (RAG) vs Action (Agent Tools)] ➔ [Response Gen]
+// ➔ [Streaming TTS] ➔ [Audio Output]
+// Dedicated Indian Male Lab Assistant: Vinod (+91 80 4388 8802)
+// Features Instant Barge-In Interruption & Real-Time Pipeline Visualizer
 // ==========================================================================
 
 let callSocket = null;
@@ -10,15 +14,7 @@ let callDuration = 0;
 let callTimerInterval = null;
 let isVoiceOutputEnabled = true;
 let isRecording = false;
-let recognition = null;
 let canvasAnimId = null;
-
-// Barge-In & Audio State Tracking
-let isAgentSpeaking = false;
-let audioContext = null;
-let analyser = null;
-let micStream = null;
-let vadThreshold = 0.035; // Voice activity detection threshold
 
 // DOM Elements
 const callModal = document.getElementById('call-modal');
@@ -43,17 +39,24 @@ const btnModalInterrupt = document.getElementById('btn-modal-interrupt');
 const bargeInBadge = document.getElementById('barge-in-badge');
 const packagesContainer = document.getElementById('packages-container');
 
-document.addEventListener('DOMContentLoaded', () => {
-  initCallTriggers();
-  initFAQAccordion();
-  initSpeechRecognition();
-  initModalVisualizer();
-  loadHealthPackages();
-});
+// Visualizer nodes
+const pipelineStatusBadge = document.getElementById('pipeline-status-badge');
+const pipeUser = document.getElementById('pipe-user');
+const pipeAudioEngine = document.getElementById('pipe-audio-engine');
+const pipeSTT = document.getElementById('pipe-stt');
+const pipeConvEngine = document.getElementById('pipe-conv-engine');
+const pipeLLMAgent = document.getElementById('pipe-llm-agent');
+const pipeBranch = document.getElementById('pipe-branch');
+const pipeBranchTitle = document.getElementById('pipe-branch-title');
+const pipeBranchDesc = document.getElementById('pipe-branch-desc');
+const pipeRespGen = document.getElementById('pipe-resp-gen');
+const pipeTTS = document.getElementById('pipe-tts');
+const pipeOutput = document.getElementById('pipe-output');
 
 // --- Toast System ---
 function showToast(message) {
   const container = document.getElementById('toast-container');
+  if (!container) return;
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.textContent = message;
@@ -62,20 +65,428 @@ function showToast(message) {
 }
 
 // ==========================================================================
+// ARCHITECTURE COMPONENT: PIPELINE VISUALIZER
+// ==========================================================================
+class PipelineVisualizer {
+  static resetAll() {
+    [pipeUser, pipeAudioEngine, pipeSTT, pipeConvEngine, pipeLLMAgent, pipeBranch, pipeRespGen, pipeTTS, pipeOutput].forEach(el => {
+      if (el) {
+        el.className = 'pipeline-step';
+      }
+    });
+    if (pipeBranchTitle) pipeBranchTitle.textContent = 'Question / Action';
+    if (pipeBranchDesc) pipeBranchDesc.textContent = 'RAG or Tools';
+    if (pipelineStatusBadge) {
+      pipelineStatusBadge.textContent = 'Idle • Listening';
+      pipelineStatusBadge.style.color = '#38bdf8';
+    }
+  }
+
+  static showUserSpeaking() {
+    this.resetAll();
+    if (pipeUser) pipeUser.classList.add('active');
+    if (pipeAudioEngine) pipeAudioEngine.classList.add('active');
+    if (pipeSTT) pipeSTT.classList.add('active');
+    if (pipelineStatusBadge) {
+      pipelineStatusBadge.textContent = '🎤 User Speaking • VAD Active';
+      pipelineStatusBadge.style.color = '#34d399';
+    }
+  }
+
+  static showProcessing() {
+    if (pipeConvEngine) pipeConvEngine.classList.add('active');
+    if (pipeLLMAgent) pipeLLMAgent.classList.add('active');
+    if (pipelineStatusBadge) {
+      pipelineStatusBadge.textContent = '⚡ Conversation Engine & Agent Routing';
+      pipelineStatusBadge.style.color = '#f59e0b';
+    }
+  }
+
+  static showTrace(trace) {
+    if (!trace) return;
+    this.resetAll();
+
+    if (pipeConvEngine) pipeConvEngine.classList.add('active');
+    if (pipeLLMAgent) pipeLLMAgent.classList.add('active');
+    if (pipeRespGen) pipeRespGen.classList.add('active');
+    if (pipeTTS) pipeTTS.classList.add('active');
+    if (pipeOutput) pipeOutput.classList.add('active');
+
+    const category = trace.category || 'Action required';
+    const component = trace.component || 'Tools';
+
+    if (category === 'Question' || trace.route === 'RAG') {
+      if (pipeBranch) {
+        pipeBranch.className = 'pipeline-step highlight-rag';
+      }
+      if (pipeBranchTitle) pipeBranchTitle.textContent = 'RAG (Question)';
+      if (pipeBranchDesc) pipeBranchDesc.textContent = component || 'Prep / SOPs';
+      if (pipelineStatusBadge) {
+        pipelineStatusBadge.textContent = `📚 RAG Router: ${component}`;
+        pipelineStatusBadge.style.color = '#c084fc';
+      }
+    } else {
+      if (pipeBranch) {
+        pipeBranch.className = 'pipeline-step highlight-tools';
+      }
+      if (pipeBranchTitle) pipeBranchTitle.textContent = 'Agent Tools';
+      if (pipeBranchDesc) pipeBranchDesc.textContent = component || 'Availability / Price';
+      if (pipelineStatusBadge) {
+        pipelineStatusBadge.textContent = `🛠️ Agent Tool: ${component}`;
+        pipelineStatusBadge.style.color = '#34d399';
+      }
+    }
+  }
+
+  static showTTSPlaying() {
+    if (pipeTTS) pipeTTS.classList.add('active');
+    if (pipeOutput) pipeOutput.classList.add('active');
+    if (pipelineStatusBadge) {
+      pipelineStatusBadge.textContent = '🔊 Streaming TTS (Indian Male: Vinod)';
+      pipelineStatusBadge.style.color = '#38bdf8';
+    }
+  }
+}
+
+// ==========================================================================
+// ARCHITECTURE COMPONENT: STREAMING TTS ENGINE (SENTENCE-STREAMED AUDIO)
+// Plays chunks on sentence boundaries with 0 latency and instant barge-in cancel
+// ==========================================================================
+class StreamingTTSEngine {
+  constructor() {
+    this.isSpeaking = false;
+    this.sentenceQueue = [];
+    this.activeUtterance = null;
+    this.cachedVoice = null;
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        this.cachedVoice = this.pickVoice();
+      };
+    }
+  }
+
+  pickVoice() {
+    if (!('speechSynthesis' in window)) return null;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) return null;
+
+    // 1. Explicit Indian English Male Voice
+    const inMale = voices.find(v => 
+      (v.lang === 'en-IN' || v.lang.startsWith('en-IN') || v.name.includes('India')) &&
+      (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('ravi') || 
+       v.name.toLowerCase().includes('prabhat') || v.name.toLowerCase().includes('madhav') || 
+       v.name.toLowerCase().includes('mohan') || v.name.toLowerCase().includes('hemant'))
+    );
+    if (inMale) return inMale;
+
+    // 2. Any Indian English voice
+    const inAny = voices.find(v => v.lang === 'en-IN' || v.lang.startsWith('en-IN') || v.name.includes('India'));
+    if (inAny) return inAny;
+
+    // 3. Natural English male
+    const maleEn = voices.find(v => v.lang.startsWith('en') && 
+      (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('david') || 
+       v.name.toLowerCase().includes('george') || v.name.toLowerCase().includes('guy') || 
+       v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('google uk english male'))
+    );
+    if (maleEn) return maleEn;
+
+    return voices.find(v => v.lang.startsWith('en')) || voices[0];
+  }
+
+  speak(text) {
+    if (!isVoiceOutputEnabled || !('speechSynthesis' in window)) return;
+    this.cancel();
+
+    // Clean text and split into streaming sentence chunks
+    const clean = text.replace(/[*#_\[\]\(\)]/g, '').replace(/https?:\/\/\S+/g, '').trim();
+    if (!clean) return;
+
+    // Split on sentence terminators (. ! ? or newline)
+    const sentences = clean.match(/[^.!?\n]+[.!?\n]*/g) || [clean];
+    this.sentenceQueue = sentences.map(s => s.trim()).filter(s => s.length > 0);
+
+    this.playNextChunk();
+  }
+
+  playNextChunk() {
+    if (this.sentenceQueue.length === 0) {
+      this.isSpeaking = false;
+      if (modalAudioState && isCallActive) {
+        modalAudioState.textContent = 'Voice Audio Active (Listening to you)';
+        modalAudioState.style.color = '#34d399';
+      }
+      PipelineVisualizer.resetAll();
+      return;
+    }
+
+    const chunk = this.sentenceQueue.shift();
+    const utterance = new SpeechSynthesisUtterance(chunk);
+    this.activeUtterance = utterance;
+
+    // Calibrated Indian Male tone (warm, reassuring, clinical)
+    utterance.rate = 0.98;
+    utterance.pitch = 0.92;
+
+    const voice = this.cachedVoice || this.pickVoice();
+    if (voice) {
+      utterance.voice = voice;
+    }
+
+    utterance.onstart = () => {
+      this.isSpeaking = true;
+      if (modalAudioState) {
+        modalAudioState.textContent = 'Vinod is Speaking • Speak anytime to interrupt';
+        modalAudioState.style.color = '#38bdf8';
+      }
+      PipelineVisualizer.showTTSPlaying();
+    };
+
+    utterance.onend = () => {
+      this.playNextChunk();
+    };
+
+    utterance.onerror = (e) => {
+      this.isSpeaking = false;
+      this.playNextChunk();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  cancel() {
+    this.sentenceQueue = [];
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    this.isSpeaking = false;
+    this.activeUtterance = null;
+  }
+}
+
+const streamingTTS = new StreamingTTSEngine();
+
+// Helper bridge
+function speakAudio(text) {
+  streamingTTS.speak(text);
+}
+
+// ==========================================================================
+// ARCHITECTURE COMPONENT: AUDIO INPUT ENGINE
+// Noise suppression • Echo cancellation • Hardware VAD • Turn detection
+// ==========================================================================
+class AudioInputEngine {
+  constructor() {
+    this.audioContext = null;
+    this.analyser = null;
+    this.micStream = null;
+    this.vadThreshold = 0.035;
+    this.animFrameId = null;
+    this.isMonitoring = false;
+  }
+
+  async start() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      if (!this.audioContext) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.audioContext = new AudioCtx();
+      }
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      // Enforce Echo Cancellation and Noise Suppression on Hardware Stream
+      this.micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 512;
+      const source = this.audioContext.createMediaStreamSource(this.micStream);
+      source.connect(this.analyser);
+
+      this.isMonitoring = true;
+      const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+
+      const checkEnergy = () => {
+        if (!this.isMonitoring || !isCallActive) return;
+
+        this.analyser.getByteTimeDomainData(dataArray);
+        let sumSquares = 0.0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const norm = (dataArray[i] - 128) / 128;
+          sumSquares += norm * norm;
+        }
+        const rms = Math.sqrt(sumSquares / dataArray.length);
+
+        // Hardware VAD: If speech energy exceeds threshold while agent is talking -> INSTANT BARGE IN!
+        if (rms > this.vadThreshold && (streamingTTS.isSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking))) {
+          stopAgentSpeaking('mic_voice_energy_vad');
+        }
+
+        this.animFrameId = requestAnimationFrame(checkEnergy);
+      };
+      this.animFrameId = requestAnimationFrame(checkEnergy);
+    } catch (err) {
+      console.log('AudioInputEngine Notice:', err);
+    }
+  }
+
+  stop() {
+    this.isMonitoring = false;
+    if (this.animFrameId) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+    if (this.micStream) {
+      this.micStream.getTracks().forEach(t => t.stop());
+      this.micStream = null;
+    }
+  }
+}
+
+const audioInputEngine = new AudioInputEngine();
+
+// ==========================================================================
+// ARCHITECTURE COMPONENT: STREAMING STT ENGINE (Speech → Text)
+// Real-time continuous recognition with turn completion debouncing
+// ==========================================================================
+class STTEngine {
+  constructor() {
+    this.recognition = null;
+    this.speechDebounceTimer = null;
+    this.accumulatedSpeech = '';
+    this.init();
+  }
+
+  init() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      if (btnModalMic) btnModalMic.style.display = 'none';
+      return;
+    }
+
+    this.recognition = new SpeechRecognition();
+    this.recognition.continuous = true;
+    this.recognition.interimResults = true;
+    this.recognition.lang = 'en-IN'; // Indian English acoustic profile
+
+    this.recognition.onstart = () => {
+      isRecording = true;
+      if (btnModalMic) btnModalMic.classList.add('recording');
+    };
+
+    // Instant speech start detection -> Stop TTS with 0 latency
+    this.recognition.onspeechstart = () => {
+      stopAgentSpeaking('stt_speech_start');
+      PipelineVisualizer.showUserSpeaking();
+      if (modalAudioState) {
+        modalAudioState.textContent = '🎤 Voice detected — Listening to you...';
+        modalAudioState.style.color = '#34d399';
+      }
+    };
+
+    this.recognition.onsoundstart = () => {
+      stopAgentSpeaking('stt_sound_start');
+    };
+
+    this.recognition.onresult = (event) => {
+      stopAgentSpeaking('stt_interim_result');
+      PipelineVisualizer.showUserSpeaking();
+
+      let interimTranscript = '';
+      let finalChunk = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalChunk += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      if (finalChunk.trim()) {
+        this.accumulatedSpeech = (this.accumulatedSpeech + ' ' + finalChunk).trim();
+      }
+
+      const display = (this.accumulatedSpeech + ' ' + interimTranscript).trim();
+      if (display && modalUserText) {
+        modalUserText.value = display;
+        if (modalActionText) {
+          modalActionText.textContent = `🎤 Listening to your complete query...`;
+          modalActionText.style.color = '#34d399';
+        }
+      }
+
+      // Intelligent Turn Detection: Gather complete speech until user finishes (950ms silence)
+      clearTimeout(this.speechDebounceTimer);
+      this.speechDebounceTimer = setTimeout(() => {
+        const complete = (this.accumulatedSpeech || (modalUserText ? modalUserText.value : '')).trim();
+        if (complete && complete.length > 1) {
+          this.accumulatedSpeech = '';
+          if (modalUserText) modalUserText.value = complete;
+          PipelineVisualizer.showProcessing();
+          if (modalAudioState) {
+            modalAudioState.textContent = 'Processing speech with AI...';
+            modalAudioState.style.color = '#38bdf8';
+          }
+          sendUserSpeechTurn();
+        }
+      }, 950);
+    };
+
+    this.recognition.onerror = (e) => {
+      if (e.error !== 'no-speech') {
+        console.log('STT notice:', e.error);
+      }
+    };
+
+    this.recognition.onend = () => {
+      isRecording = false;
+      if (btnModalMic) btnModalMic.classList.remove('recording');
+      if (isCallActive) {
+        try {
+          this.recognition.start();
+        } catch (e) {}
+      }
+    };
+  }
+
+  start() {
+    if (this.recognition) {
+      try {
+        this.recognition.start();
+      } catch (e) {}
+    }
+  }
+
+  stop() {
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch (e) {}
+    }
+  }
+}
+
+const sttEngine = new STTEngine();
+
+// ==========================================================================
 // BARGE-IN INTERRUPTION ENGINE
 // Immediately halts agent speech playback the instant human voice or input is detected!
 // ==========================================================================
 function stopAgentSpeaking(reason = 'user_speaking') {
-  const wasSpeaking = isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking);
+  const wasSpeaking = streamingTTS.isSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking);
   if (!wasSpeaking) return;
 
-  // 1. Immediately cancel Web Speech API TTS
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-  }
-  isAgentSpeaking = false;
+  streamingTTS.cancel();
 
-  // 2. Update UI Indicators
   if (modalAudioState) {
     modalAudioState.textContent = 'Vinod Paused (Barge-In Active) • Listening to you...';
     modalAudioState.style.color = '#f59e0b';
@@ -85,7 +496,7 @@ function stopAgentSpeaking(reason = 'user_speaking') {
     modalActionText.style.color = '#f59e0b';
   }
 
-  // 3. Mark the interrupted agent speech bubble in transcript
+  // Mark interrupted bubble
   const agentBubbles = modalTranscriptFeed.querySelectorAll('.speech-bubble.agent');
   if (agentBubbles.length > 0) {
     const lastBubble = agentBubbles[agentBubbles.length - 1];
@@ -97,11 +508,11 @@ function stopAgentSpeaking(reason = 'user_speaking') {
       tag.style.fontSize = '0.74rem';
       tag.style.fontWeight = '600';
       tag.style.marginLeft = '6px';
-      lastBubble.querySelector('.bubble-speaker').appendChild(tag);
+      const speakerEl = lastBubble.querySelector('.bubble-speaker');
+      if (speakerEl) speakerEl.appendChild(tag);
     }
   }
 
-  // 4. Send cancellation signal to server WebSocket
   if (!useRestFallback && callSocket && callSocket.readyState === WebSocket.OPEN) {
     callSocket.send(JSON.stringify({
       type: 'user_interrupt',
@@ -113,145 +524,9 @@ function stopAgentSpeaking(reason = 'user_speaking') {
   console.log(`[Barge-In Active] Agent speech halted: ${reason}`);
 }
 
-// Hardware-level Voice Activity Detection (VAD) via Web Audio API Analyser
-async function startVoiceActivityDetection() {
-  try {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-    if (!audioContext) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      audioContext = new AudioCtx();
-    }
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
-    }
-
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    });
-
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 512;
-    const source = audioContext.createMediaStreamSource(micStream);
-    source.connect(analyser);
-
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    function monitorVoiceEnergy() {
-      if (!isCallActive) return;
-
-      analyser.getByteTimeDomainData(dataArray);
-      let sumSquares = 0.0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const norm = (dataArray[i] - 128) / 128;
-        sumSquares += norm * norm;
-      }
-      const rms = Math.sqrt(sumSquares / dataArray.length);
-
-      // If user voice energy exceeds threshold while agent is speaking -> INSTANT BARGE IN!
-      if (rms > vadThreshold && (isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking))) {
-        stopAgentSpeaking('mic_voice_energy_vad');
-      }
-
-      requestAnimationFrame(monitorVoiceEnergy);
-    }
-    requestAnimationFrame(monitorVoiceEnergy);
-  } catch (err) {
-    console.log('Voice Activity Detection note:', err);
-  }
-}
-
-function stopVoiceActivityDetection() {
-  if (micStream) {
-    micStream.getTracks().forEach(track => track.stop());
-    micStream = null;
-  }
-}
-
-// --- Direct Customer Support Call Triggers ---
-function initCallTriggers() {
-  headerCallTrigger.addEventListener('click', () => openCallModal());
-  headerCallTrigger.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') openCallModal();
-  });
-
-  if (heroCallTrigger) {
-    heroCallTrigger.addEventListener('click', () => openCallModal());
-  }
-
-  btnModalClose.addEventListener('click', closeCallModal);
-  btnModalHangup.addEventListener('click', closeCallModal);
-
-  modalPhoneInput.addEventListener('change', () => {
-    checkCallerId(modalPhoneInput.value);
-  });
-
-  btnModalSend.addEventListener('click', () => {
-    stopAgentSpeaking('send_button_pressed');
-    sendUserSpeechTurn();
-  });
-
-  modalUserText.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      stopAgentSpeaking('enter_key_pressed');
-      sendUserSpeechTurn();
-    }
-  });
-
-  // Typing immediately stops agent speaking (instant responsive barge-in)
-  modalUserText.addEventListener('input', () => {
-    if (isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking)) {
-      stopAgentSpeaking('user_typing');
-    }
-  });
-
-  // Dedicated manual interrupt button
-  if (btnModalInterrupt) {
-    btnModalInterrupt.addEventListener('click', () => {
-      stopAgentSpeaking('manual_interrupt_button');
-      modalUserText.focus();
-    });
-  }
-
-  // Quick chips: clicking any chip halts agent speech immediately
-  document.querySelectorAll('.quick-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      stopAgentSpeaking('quick_chip_selected');
-      modalUserText.value = chip.dataset.speak;
-      sendUserSpeechTurn();
-    });
-  });
-}
-
-function openCallModal(preferredTest = null) {
-  callModal.style.display = 'flex';
-  startCallSession(preferredTest);
-}
-
-function closeCallModal() {
-  if (isCallActive) {
-    endCallSession();
-  }
-  callModal.style.display = 'none';
-}
-
-// --- Caller ID Lookup ---
-async function checkCallerId(phone) {
-  try {
-    const res = await fetch(`/api/patients/${encodeURIComponent(phone)}/lookup`);
-    if (res.ok) {
-      const patient = await res.json();
-      modalCallerDesc.textContent = `Recognized: ${patient.full_name} • Verified Returning Patient Profile`;
-      modalAvatar.textContent = patient.full_name.split(' ').map(n => n[0]).join('').substring(0, 2);
-    } else {
-      modalCallerDesc.textContent = 'New / Unregistered Number • Guest Profile will be created';
-      modalAvatar.textContent = '??';
-    }
-  } catch (err) {
-    console.log('Lookup fallback');
-  }
-}
-
-// --- Active Call Engine ---
+// ==========================================================================
+// CALL SESSION ENGINE (WEBSOCKET WITH REST FALLBACK)
+// ==========================================================================
 let currentCallSid = null;
 let useRestFallback = false;
 
@@ -260,22 +535,15 @@ function startCallSession(preferredTest = null) {
   isCallActive = true;
   useRestFallback = false;
   currentCallSid = null;
-  modalCallStatus.textContent = 'Call Active • Connected to Dedicated Care Specialist';
+  modalCallStatus.textContent = 'Call Active • Connected to Vinod (+91 80 4388 8802)';
   modalCallStatus.style.color = '#34d399';
   modalTranscriptFeed.innerHTML = '';
   checkCallerId(phone);
 
-  // Initialize VAD & Speech Recognition
-  startVoiceActivityDetection();
-  if (recognition) {
-    try {
-      recognition.start();
-    } catch (e) {
-      // already active
-    }
-  }
+  audioInputEngine.start();
+  sttEngine.start();
+  PipelineVisualizer.resetAll();
 
-  // Timer
   callDuration = 0;
   if (callTimerInterval) clearInterval(callTimerInterval);
   callTimerInterval = setInterval(() => {
@@ -285,7 +553,6 @@ function startCallSession(preferredTest = null) {
     modalTimer.textContent = `${mins}:${secs}`;
   }, 1000);
 
-  // Attempt WebSocket first; seamlessly fall back to REST on serverless platforms
   try {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     callSocket = new WebSocket(`${protocol}//${window.location.host}/ws/phone-call`);
@@ -314,6 +581,12 @@ function startCallSession(preferredTest = null) {
         appendSpeechBubble('Vinod (Virtual Lab Assistant)', msg.speech, 'agent');
         speakAudio(msg.speech);
 
+        // Update Architecture Visualizer with real-time pipeline trace!
+        const trace = (msg.extra && msg.extra.pipeline_trace) ? msg.extra.pipeline_trace : msg.pipeline_trace;
+        if (trace) {
+          PipelineVisualizer.showTrace(trace);
+        }
+
         if (msg.intent === 'human_handover_ambiguity') {
           appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '+91 80 4388 8802');
         } else if (msg.intent === 'emergency_transfer') {
@@ -338,7 +611,7 @@ function startCallSession(preferredTest = null) {
     };
 
     callSocket.onerror = () => {
-      console.log('WebSocket not supported, switching to HTTP REST API');
+      console.log('WebSocket notice, using HTTP REST API');
       startRestCallSession(phone, preferredTest);
     };
 
@@ -382,13 +655,9 @@ function endCallSession() {
   isCallActive = false;
   clearInterval(callTimerInterval);
   stopAgentSpeaking('call_ended');
-  stopVoiceActivityDetection();
-
-  if (recognition) {
-    try {
-      recognition.stop();
-    } catch (e) {}
-  }
+  audioInputEngine.stop();
+  sttEngine.stop();
+  PipelineVisualizer.resetAll();
 
   if (callSocket && callSocket.readyState === WebSocket.OPEN) {
     callSocket.send(JSON.stringify({ type: 'hangup' }));
@@ -407,11 +676,10 @@ async function sendUserSpeechTurn() {
   const text = modalUserText.value.trim();
   if (!text) return;
 
-  // Stop any lingering audio immediately
   stopAgentSpeaking('user_sent_speech');
-
   appendSpeechBubble('You', text, 'user');
   modalUserText.value = '';
+  PipelineVisualizer.showProcessing();
 
   if (!useRestFallback && callSocket && callSocket.readyState === WebSocket.OPEN) {
     callSocket.send(JSON.stringify({
@@ -419,7 +687,6 @@ async function sendUserSpeechTurn() {
       text: text
     }));
   } else {
-    // REST turn fallback
     const phone = modalPhoneInput.value.trim() || '+91 98200 23456';
     try {
       const res = await fetch('/api/telephony/chat-turn', {
@@ -435,6 +702,11 @@ async function sendUserSpeechTurn() {
         const data = await res.json();
         appendSpeechBubble('Vinod (Virtual Lab Assistant)', data.speech, 'agent');
         speakAudio(data.speech);
+
+        const trace = (data.extra && data.extra.pipeline_trace) ? data.extra.pipeline_trace : data.pipeline_trace;
+        if (trace) {
+          PipelineVisualizer.showTrace(trace);
+        }
 
         if (data.intent === 'human_handover_ambiguity') {
           appendTransferCard('Senior Duty Medical Officer & Human Clinical Desk', 'Clinical Ambiguity / Nuance Detected', '+91 80 4388 8802');
@@ -531,196 +803,96 @@ window.selectSlot = function(slotLabel) {
   sendUserSpeechTurn();
 };
 
-// --- Text-to-Speech (Indian Male Virtual Lab Assistant: Vinod) ---
-function pickIndianMaleVoice() {
-  if (!('speechSynthesis' in window)) return null;
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices || voices.length === 0) return null;
-
-  // 1. Priority: Explicit Indian English Male Voice
-  const inMale = voices.find(v => 
-    (v.lang === 'en-IN' || v.lang.startsWith('en-IN') || v.name.includes('India')) &&
-    (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('ravi') || 
-     v.name.toLowerCase().includes('prabhat') || v.name.toLowerCase().includes('madhav') || 
-     v.name.toLowerCase().includes('mohan') || v.name.toLowerCase().includes('hemant'))
-  );
-  if (inMale) return inMale;
-
-  // 2. Any Indian English voice
-  const inAny = voices.find(v => v.lang === 'en-IN' || v.lang.startsWith('en-IN') || v.name.includes('India'));
-  if (inAny) return inAny;
-
-  // 3. High quality natural male English voice
-  const maleEn = voices.find(v => v.lang.startsWith('en') && 
-    (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('david') || 
-     v.name.toLowerCase().includes('george') || v.name.toLowerCase().includes('guy') || 
-     v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('google uk english male'))
-  );
-  if (maleEn) return maleEn;
-
-  // 4. General English voice fallback
-  return voices.find(v => v.lang.startsWith('en')) || voices[0];
-}
-
-// Ensure voices are loaded
-if ('speechSynthesis' in window) {
-  window.speechSynthesis.onvoiceschanged = () => {
-    pickIndianMaleVoice();
-  };
-}
-
-function speakAudio(text) {
-  if (!isVoiceOutputEnabled || !('speechSynthesis' in window)) return;
-
-  // Immediately cancel any previous audio
-  window.speechSynthesis.cancel();
-
-  const cleanSpeech = text.replace(/[*#_\[\]\(\)]/g, '').replace(/https?:\/\/\S+/g, '');
-  const utterance = new SpeechSynthesisUtterance(cleanSpeech);
-
-  // Calibrate acoustic parameters for Indian Male lab assistant (steady, warm, reassuring)
-  utterance.rate = 0.98;
-  utterance.pitch = 0.92;
-
-  const chosenVoice = pickIndianMaleVoice();
-  if (chosenVoice) {
-    utterance.voice = chosenVoice;
-  }
-
-  utterance.onstart = () => {
-    isAgentSpeaking = true;
-    if (modalAudioState) {
-      modalAudioState.textContent = 'Vinod is Speaking • Speak anytime to interrupt';
-      modalAudioState.style.color = '#38bdf8';
-    }
-  };
-
-  utterance.onend = () => {
-    isAgentSpeaking = false;
-    if (modalAudioState && isCallActive) {
-      modalAudioState.textContent = 'Voice Audio Active (Listening to you)';
-      modalAudioState.style.color = '#34d399';
-    }
-  };
-
-  utterance.onerror = (e) => {
-    isAgentSpeaking = false;
-  };
-
-  window.speechSynthesis.speak(utterance);
-}
-
-// --- Speech-to-Text (Microphone with Continuous Barge-In & Complete Speech Capture) ---
-let speechDebounceTimer = null;
-let accumulatedUserSpeech = '';
-
-function initSpeechRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    btnModalMic.style.display = 'none';
-    return;
-  }
-
-  recognition = new SpeechRecognition();
-  recognition.continuous = true;       // Keep listening during entire call
-  recognition.interimResults = true;    // Instant phoneme / speech detection
-  recognition.lang = 'en-IN';          // Indian English acoustic model
-
-  recognition.onstart = () => {
-    isRecording = true;
-    btnModalMic.classList.add('recording');
-  };
-
-  // VAD: Instant speech start detected -> IMMEDIATELY STOP TTS!
-  recognition.onspeechstart = () => {
-    stopAgentSpeaking('speech_start_vad');
-    if (modalAudioState) {
-      modalAudioState.textContent = '🎤 Voice detected — Listening to you...';
-      modalAudioState.style.color = '#34d399';
-    }
-  };
-
-  recognition.onsoundstart = () => {
-    stopAgentSpeaking('sound_start_vad');
-  };
-
-  recognition.onresult = (event) => {
-    // 1. If agent is speaking, IMMEDIATELY STOP TTS with 0 latency
-    stopAgentSpeaking('speech_in_progress');
-
-    let interimTranscript = '';
-    let finalChunk = '';
-
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      if (event.results[i].isFinal) {
-        finalChunk += event.results[i][0].transcript;
-      } else {
-        interimTranscript += event.results[i][0].transcript;
-      }
-    }
-
-    if (finalChunk.trim()) {
-      accumulatedUserSpeech = (accumulatedUserSpeech + ' ' + finalChunk).trim();
-    }
-
-    const currentDisplay = (accumulatedUserSpeech + ' ' + interimTranscript).trim();
-    if (currentDisplay) {
-      modalUserText.value = currentDisplay;
-      if (modalActionText) {
-        modalActionText.textContent = `🎤 Listening to your complete query...`;
-        modalActionText.style.color = '#34d399';
-      }
-    }
-
-    // 2. Capture user's complete speech using intelligent silence debouncer (950ms)
-    clearTimeout(speechDebounceTimer);
-    speechDebounceTimer = setTimeout(() => {
-      const completeQuery = (accumulatedUserSpeech || modalUserText.value || '').trim();
-      if (completeQuery && completeQuery.length > 1) {
-        accumulatedUserSpeech = '';
-        modalUserText.value = completeQuery;
-        if (modalAudioState) {
-          modalAudioState.textContent = 'Processing speech with AI...';
-          modalAudioState.style.color = '#38bdf8';
-        }
-        sendUserSpeechTurn();
-      }
-    }, 950);
-  };
-
-  recognition.onerror = (event) => {
-    if (event.error !== 'no-speech') {
-      console.log('Speech recognition notice:', event.error);
-    }
-  };
-
-  recognition.onend = () => {
-    isRecording = false;
-    btnModalMic.classList.remove('recording');
-
-    // If call is still active, automatically restart recognition so user never misses a turn
-    if (isCallActive) {
-      try {
-        recognition.start();
-      } catch (e) {}
-    }
-  };
-
-  btnModalMic.addEventListener('click', () => {
-    stopAgentSpeaking('mic_button_clicked');
-    if (!isRecording) {
-      try {
-        recognition.start();
-      } catch (e) {}
+async function checkCallerId(phone) {
+  try {
+    const res = await fetch(`/api/patients/${encodeURIComponent(phone)}/lookup`);
+    if (res.ok) {
+      const patient = await res.json();
+      modalCallerDesc.textContent = `Recognized: ${patient.full_name} • Verified Returning Patient Profile`;
+      modalAvatar.textContent = patient.full_name.split(' ').map(n => n[0]).join('').substring(0, 2);
     } else {
-      try {
-        recognition.stop();
-      } catch (e) {}
+      modalCallerDesc.textContent = 'New / Unregistered Number • Guest Profile will be created';
+      modalAvatar.textContent = '??';
+    }
+  } catch (err) {
+    console.log('Lookup fallback');
+  }
+}
+
+function openCallModal(preferredTest = null) {
+  callModal.style.display = 'flex';
+  startCallSession(preferredTest);
+}
+
+function closeCallModal() {
+  if (isCallActive) {
+    endCallSession();
+  }
+  callModal.style.display = 'none';
+}
+
+function initCallTriggers() {
+  headerCallTrigger.addEventListener('click', () => openCallModal());
+  headerCallTrigger.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') openCallModal();
+  });
+
+  if (heroCallTrigger) {
+    heroCallTrigger.addEventListener('click', () => openCallModal());
+  }
+
+  btnModalClose.addEventListener('click', closeCallModal);
+  btnModalHangup.addEventListener('click', closeCallModal);
+
+  modalPhoneInput.addEventListener('change', () => {
+    checkCallerId(modalPhoneInput.value);
+  });
+
+  btnModalSend.addEventListener('click', () => {
+    stopAgentSpeaking('send_button_pressed');
+    sendUserSpeechTurn();
+  });
+
+  modalUserText.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      stopAgentSpeaking('enter_key_pressed');
+      sendUserSpeechTurn();
     }
   });
+
+  modalUserText.addEventListener('input', () => {
+    if (streamingTTS.isSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking)) {
+      stopAgentSpeaking('user_typing');
+    }
+  });
+
+  if (btnModalInterrupt) {
+    btnModalInterrupt.addEventListener('click', () => {
+      stopAgentSpeaking('manual_interrupt_button');
+      modalUserText.focus();
+    });
+  }
+
+  document.querySelectorAll('.quick-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      stopAgentSpeaking('quick_chip_selected');
+      modalUserText.value = chip.dataset.speak;
+      sendUserSpeechTurn();
+    });
+  });
+
+  if (btnModalMic) {
+    btnModalMic.addEventListener('click', () => {
+      stopAgentSpeaking('mic_button_clicked');
+      if (!isRecording) {
+        sttEngine.start();
+      } else {
+        sttEngine.stop();
+      }
+    });
+  }
 }
 
-// --- Audio Waveform Visualizer ---
 function initModalVisualizer() {
   const ctx = modalWaveformCanvas.getContext('2d');
   const barCount = 38;
@@ -735,11 +907,9 @@ function initModalVisualizer() {
       let barHeight;
       if (isCallActive) {
         const t = Date.now() * 0.005;
-        if (isAgentSpeaking) {
-          // Dynamic tall waves when agent is talking
+        if (streamingTTS.isSpeaking) {
           barHeight = Math.sin(t + i * 0.35) * 18 + Math.cos(t * 0.9 + i * 0.2) * 12 + 24;
         } else {
-          // Gentle ambient listening ripples when listening to user
           barHeight = Math.sin(t * 0.6 + i * 0.2) * 6 + 10;
         }
       } else {
@@ -749,16 +919,7 @@ function initModalVisualizer() {
       const x = i * (barWidth + 2);
       const y = (height - barHeight) / 2;
 
-      const gradient = ctx.createLinearGradient(0, y, 0, y + barHeight);
-      if (isAgentSpeaking) {
-        gradient.addColorStop(0, '#0170B9');
-        gradient.addColorStop(1, '#38bdf8');
-      } else {
-        gradient.addColorStop(0, '#10b981');
-        gradient.addColorStop(1, '#34d399');
-      }
-
-      ctx.fillStyle = gradient;
+      ctx.fillStyle = isCallActive && streamingTTS.isSpeaking ? '#38bdf8' : '#334155';
       ctx.fillRect(x, y, barWidth, barHeight);
     }
     canvasAnimId = requestAnimationFrame(renderWaveform);
@@ -766,50 +927,59 @@ function initModalVisualizer() {
   renderWaveform();
 }
 
-// --- Health Packages ---
-async function loadHealthPackages() {
-  try {
-    const res = await fetch('/api/packages');
-    const packages = await res.json();
-    packagesContainer.innerHTML = '';
-
-    packages.forEach(pkg => {
-      const card = document.createElement('div');
-      card.className = `pkg-card ${pkg.is_popular ? 'popular' : ''}`;
-      card.innerHTML = `
-        ${pkg.is_popular ? '<span class="badge-pop">POPULAR CHOICE</span>' : ''}
-        <div>
-          <h3>${pkg.package_name}</h3>
-          <p>${pkg.description}</p>
-          <div class="pkg-tests-list">Included: ${pkg.test_codes.join(' • ')}</div>
-        </div>
-        <div>
-          <div class="pkg-price-row">
-            <span class="pkg-discount">$${pkg.discounted_price.toFixed(2)}</span>
-            <span class="pkg-original">$${pkg.price.toFixed(2)}</span>
-          </div>
-          <button class="btn-pkg-call" onclick="openCallModal('${pkg.package_name}')">
-            📞 Call Support to Book ($${pkg.discounted_price.toFixed(0)})
-          </button>
-        </div>
-      `;
-      packagesContainer.appendChild(card);
-    });
-  } catch (err) {
-    console.error('Error loading packages:', err);
-  }
-}
-
-// --- FAQ Accordion ---
 function initFAQAccordion() {
-  document.querySelectorAll('.faq-question').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const item = btn.parentElement;
+  const faqItems = document.querySelectorAll('.faq-item');
+  faqItems.forEach(item => {
+    const question = item.querySelector('.faq-question');
+    question.addEventListener('click', () => {
       const isOpen = item.classList.contains('open');
-      document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+      faqItems.forEach(i => i.classList.remove('open'));
       if (!isOpen) {
         item.classList.add('open');
       }
     });
   });
 }
+
+async function loadHealthPackages() {
+  if (!packagesContainer) return;
+  try {
+    const res = await fetch('/api/packages');
+    if (res.ok) {
+      const packages = await res.json();
+      packagesContainer.innerHTML = packages.map(pkg => `
+        <div class="package-card">
+          <div class="pkg-header">
+            <h4>${pkg.package_name}</h4>
+            <span class="pkg-category">${pkg.category || 'Comprehensive'}</span>
+          </div>
+          <p class="pkg-desc">${pkg.description}</p>
+          <div class="pkg-pricing">
+            <span class="price-discounted">₹${intOrVal(pkg.discounted_price)}</span>
+            <span class="price-original">₹${intOrVal(pkg.price)}</span>
+          </div>
+          <div class="pkg-meta">
+            <span>✓ ${pkg.test_codes.length} Parameters</span>
+            <span>✓ ${pkg.fasting_required ? 'Fasting Required' : 'No Fasting'}</span>
+          </div>
+          <button class="btn-book-pkg" onclick="openCallModal('${pkg.package_name}')">
+            Book via Vinod (+91 80 4388 8802)
+          </button>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    console.log('Failed to load packages:', err);
+  }
+}
+
+function intOrVal(v) {
+  return typeof v === 'number' ? Math.round(v) : v;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initCallTriggers();
+  initFAQAccordion();
+  initModalVisualizer();
+  loadHealthPackages();
+});

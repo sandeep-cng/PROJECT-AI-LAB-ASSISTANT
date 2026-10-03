@@ -309,7 +309,7 @@ async def rest_chat_initiate(request: Request):
 @telephony_router.post("/chat-turn")
 async def rest_chat_turn(request: Request):
     data = await request.json()
-    call_sid = data.get("call_sid", "")
+    call_sid = data.get("call_sid") or f"REST-{int(time_timestamp())}"
     caller_phone = data.get("caller_phone", "+91 98200 23456")
     user_text = data.get("text", "").strip()
 
@@ -317,6 +317,7 @@ async def rest_chat_turn(request: Request):
     if not agent:
         agent = DiagnosticVoiceAgent(caller_phone=caller_phone, call_sid=call_sid)
         active_sessions[call_sid] = agent
+    active_sessions[agent.call_sid] = agent
 
     result = agent.process_turn(user_text)
     return {
